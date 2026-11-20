@@ -105,7 +105,9 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
         }
 
         if (method == HttpMethod.GET) {
-            return isPath(path, "/api/v2/productos")
+            return isPath(path, "/api/v1/productos")
+                    || isPath(path, "/api/v1/categorias")
+                    || isPath(path, "/api/v2/productos")
                     || isPath(path, "/api/v2/categorias")
                     || isPath(path, "/api/v2/precios");
         }
@@ -130,10 +132,26 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
             return "ADMIN".equals(role);
         }
 
-        if (isPath(path, "/api/v2/productos")
+        if (isPath(path, "/api/v1/productos")
+                || isPath(path, "/api/v1/categorias")
+                || isPath(path, "/api/v2/productos")
                 || isPath(path, "/api/v2/categorias")
                 || isPath(path, "/api/v2/precios")) {
             return method == HttpMethod.GET || "ADMIN".equals(role);
+        }
+
+        if (isPath(path, "/api/v1/boletas")) {
+            if ("ADMIN".equals(role)) {
+                return true;
+            }
+            if ("VENDEDOR".equals(role)) {
+                return method == HttpMethod.GET;
+            }
+            if ("CLIENTE".equals(role)) {
+                String usuarioPath = "/api/v1/boletas/usuario/" + usuarioId;
+                return (method == HttpMethod.GET && normalizePath(path).equals(usuarioPath))
+                        || method == HttpMethod.POST;
+            }
         }
 
         if (isPath(path, "/api/v1/pedidos")) {

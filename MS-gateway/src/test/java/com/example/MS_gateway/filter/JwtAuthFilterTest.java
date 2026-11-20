@@ -51,8 +51,29 @@ class JwtAuthFilterTest {
     }
 
     @Test
+    void allowsPublicVersionedProductAndCategoryReads() {
+        MockServerWebExchange products = exchange(HttpMethod.GET, "/api/v1/productos/12", null);
+        MockServerWebExchange categories = exchange(HttpMethod.GET, "/api/v1/categorias", null);
+
+        filter.apply(new JwtAuthFilter.Config()).filter(products, request -> Mono.empty()).block();
+        filter.apply(new JwtAuthFilter.Config()).filter(categories, request -> Mono.empty()).block();
+
+        assertThat(products.getResponse().getStatusCode()).isNull();
+        assertThat(categories.getResponse().getStatusCode()).isNull();
+    }
+
+    @Test
     void deniesUnauthenticatedProductWrite() {
         MockServerWebExchange exchange = exchange(HttpMethod.POST, "/api/v2/productos", null);
+
+        filter.apply(new JwtAuthFilter.Config()).filter(exchange, request -> Mono.empty()).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void deniesUnauthenticatedBoletaRead() {
+        MockServerWebExchange exchange = exchange(HttpMethod.GET, "/api/v1/boletas", null);
 
         filter.apply(new JwtAuthFilter.Config()).filter(exchange, request -> Mono.empty()).block();
 
@@ -149,6 +170,34 @@ class JwtAuthFilterTest {
 
         assertThat(ownOrders.getResponse().getStatusCode()).isNull();
         assertThat(anotherUsersOrders.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void vendorCanReadBoletasButCannotCreateThem() {
+        MockServerWebExchange list = exchange(
+                HttpMethod.GET, "/api/v1/boletas", token(7L, "VENDEDOR"));
+        MockServerWebExchange create = exchange(
+                HttpMethod.POST, "/api/v1/boletas", token(7L, "VENDEDOR"));
+
+        filter.apply(new JwtAuthFilter.Config()).filter(list, request -> Mono.empty()).block();
+        filter.apply(new JwtAuthFilter.Config()).filter(create, request -> Mono.empty()).block();
+
+        assertThat(list.getResponse().getStatusCode()).isNull();
+        assertThat(create.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void clientCanOnlyReadOwnBoletas() {
+        MockServerWebExchange ownBoletas = exchange(
+                HttpMethod.GET, "/api/v1/boletas/usuario/7", token(7L, "CLIENTE"));
+        MockServerWebExchange anotherUsersBoletas = exchange(
+                HttpMethod.GET, "/api/v1/boletas/usuario/8", token(7L, "CLIENTE"));
+
+        filter.apply(new JwtAuthFilter.Config()).filter(ownBoletas, request -> Mono.empty()).block();
+        filter.apply(new JwtAuthFilter.Config()).filter(anotherUsersBoletas, request -> Mono.empty()).block();
+
+        assertThat(ownBoletas.getResponse().getStatusCode()).isNull();
+        assertThat(anotherUsersBoletas.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
