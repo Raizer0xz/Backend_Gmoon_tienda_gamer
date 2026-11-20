@@ -36,7 +36,7 @@ import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.*;
 @RequestMapping("/api/v2/categorias")
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "Categorias", description = "Gestión de categorías de productos")
+@Tag(name = "Categorias", description = "Categorías y grupos del catálogo Gmoon")
 @SecurityRequirement(name = "bearerAuth")
 public class CategoriaController {
 
@@ -142,11 +142,10 @@ public class CategoriaController {
     // DELETE /api/v2/categorias/{id}
     // -------------------------------------------------------------------------
     @Operation(summary = "Eliminar categoría",
-            description = "Elimina la categoría. Falla si tiene productos asociados.")
+            description = "Desactiva la categoría y la conserva para mantener las referencias de los productos.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Categoría eliminada",
-                    content = @Content(schema = @Schema(example = "{\"mensaje\": \"Categoría eliminada correctamente\"}"))),
-            @ApiResponse(responseCode = "400", description = "No se puede eliminar porque tiene productos asociados"),
+            @ApiResponse(responseCode = "200", description = "Categoría desactivada",
+                    content = @Content(schema = @Schema(example = "{\"mensaje\": \"Categoría desactivada correctamente\"}"))),
             @ApiResponse(responseCode = "404", description = "Categoría no encontrada")
     })
     @DeleteMapping("/{id}")
@@ -156,7 +155,7 @@ public class CategoriaController {
         log.info("Eliminando categoría con id: {}", id);
         try {
             service.eliminarCategoria(id);
-            return ResponseEntity.ok(Map.of("mensaje", "Categoría eliminada correctamente"));
+            return ResponseEntity.ok(Map.of("mensaje", "Categoría desactivada correctamente"));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
         }

@@ -38,7 +38,7 @@ import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.*;
 @RequestMapping("/api/v2/productos")
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "Productos", description = "Gestión de productos del catálogo Market Express")
+@Tag(name = "Productos", description = "Catálogo de productos Gmoon con precio y stock")
 @SecurityRequirement(name = "bearerAuth")
 public class ProductoController {
 
@@ -235,10 +235,7 @@ public class ProductoController {
         );
         if (producto.getCategoria() != null) {
             producto.add(
-                    linkTo(methodOn(ProductoController.class).porCategoria(producto.getCategoria().getId())).withRel("categoria")
-            );
-            producto.add(
-                    linkTo(methodOn(PrecioProductoController.class).porProducto(producto.getId())).withRel("precios")
+                    linkTo(methodOn(CategoriaController.class).obtenerCategoria(producto.getCategoria().getId())).withRel("categoria")
             );
         }
     }

@@ -108,8 +108,7 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
             return isPath(path, "/api/v1/productos")
                     || isPath(path, "/api/v1/categorias")
                     || isPath(path, "/api/v2/productos")
-                    || isPath(path, "/api/v2/categorias")
-                    || isPath(path, "/api/v2/precios");
+                    || isPath(path, "/api/v2/categorias");
         }
 
         return method == HttpMethod.POST && normalizePath(path).equals("/api/v1/usuarios");
@@ -135,8 +134,7 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
         if (isPath(path, "/api/v1/productos")
                 || isPath(path, "/api/v1/categorias")
                 || isPath(path, "/api/v2/productos")
-                || isPath(path, "/api/v2/categorias")
-                || isPath(path, "/api/v2/precios")) {
+                || isPath(path, "/api/v2/categorias")) {
             return method == HttpMethod.GET || "ADMIN".equals(role);
         }
 

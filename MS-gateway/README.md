@@ -14,7 +14,7 @@ Gateway de entrada para los microservicios de Gmoon. Usa Eureka para localizar s
 | `/api/v1/pedidos/**` | `MS-PEDIDOS` | Ruta antigua conservada temporalmente |
 | `/docs/{servicio}/v3/api-docs/**` | Microservicios | Especificación OpenAPI |
 
-Las rutas antiguas `/api/v2/productos/**`, `/api/v2/categorias/**` y `/api/v2/precios/**` se mantienen durante la transición. Al adaptar `MS-productos`, se debe retirar esta compatibilidad y suprimir el recurso de precios por sucursal si ya no forma parte del modelo Gmoon.
+Las rutas antiguas `/api/v2/productos/**` y `/api/v2/categorias/**` se mantienen durante la transición. Los precios por sucursal fueron retirados al adaptar `MS-productos`; el precio vigente ahora forma parte del producto.
 
 Las solicitudes con JWT válido reciben `X-Usuario-Id`, `X-Usuario-Email` y `X-Usuario-Rol` derivados del token; los valores enviados por el cliente se reemplazan. Los permisos por rol se aplican antes de reenviar la solicitud.
 

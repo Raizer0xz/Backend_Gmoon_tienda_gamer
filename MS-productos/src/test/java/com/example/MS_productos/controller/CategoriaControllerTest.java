@@ -32,8 +32,9 @@ class CategoriaControllerTest {
     private Categoria categoriaEjemplo() {
         return Categoria.builder()
                 .id(1L)
-                .nombre("Lácteos")
-                .descripcion("Productos lácteos")
+                .nombre("Videojuegos Deportes")
+                .grupo("Videojuegos")
+                .descripcion("Juegos deportivos")
                 .imagenUrl("https://img.example.com/lacteos.png")
                 .build();
     }
@@ -45,7 +46,8 @@ class CategoriaControllerTest {
         mockMvc.perform(get("/api/v2/categorias").accept(MediaTypes.HAL_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$._embedded.categoriaList[0].id").value(1))
-                .andExpect(jsonPath("$._embedded.categoriaList[0].nombre").value("Lácteos"))
+                .andExpect(jsonPath("$._embedded.categoriaList[0].nombre").value("Videojuegos Deportes"))
+                .andExpect(jsonPath("$._embedded.categoriaList[0].grupo").value("Videojuegos"))
                 .andExpect(jsonPath("$._embedded.categoriaList[0]._links.self.href").exists())
                 .andExpect(jsonPath("$._embedded.categoriaList[0]._links.todas.href").exists())
                 .andExpect(jsonPath("$._embedded.categoriaList[0]._links.update.href").exists())
@@ -73,7 +75,7 @@ class CategoriaControllerTest {
         mockMvc.perform(get("/api/v2/categorias/1").accept(MediaTypes.HAL_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.nombre").value("Lácteos"))
+                .andExpect(jsonPath("$.nombre").value("Videojuegos Deportes"))
                 .andExpect(jsonPath("$._links.self.href").exists())
                 .andExpect(jsonPath("$._links.todas.href").exists())
                 .andExpect(jsonPath("$._links.update.href").exists())
@@ -101,8 +103,9 @@ class CategoriaControllerTest {
 
         String json = """
                 {
-                    "nombre": "Lácteos",
-                    "descripcion": "Productos lácteos",
+                    "nombre": "Videojuegos Deportes",
+                    "grupo": "Videojuegos",
+                    "descripcion": "Juegos deportivos",
                     "imagenUrl": "https://img.example.com/lacteos.png"
                 }
                 """;
@@ -113,7 +116,8 @@ class CategoriaControllerTest {
                         .content(json))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.nombre").value("Lácteos"))
+                .andExpect(jsonPath("$.nombre").value("Videojuegos Deportes"))
+                .andExpect(jsonPath("$.grupo").value("Videojuegos"))
                 .andExpect(jsonPath("$._links.self.href").exists())
                 .andExpect(jsonPath("$._links.todas.href").exists())
                 .andExpect(jsonPath("$._links.update.href").exists())
@@ -142,16 +146,18 @@ class CategoriaControllerTest {
     void deberiaActualizarCategoria() throws Exception {
         Categoria actualizada = Categoria.builder()
                 .id(1L)
-                .nombre("Lácteos y Huevos")
-                .descripcion("Lácteos y huevos frescos")
+                .nombre("PC Gamer Pro")
+                .grupo("PC Gamer")
+                .descripcion("Equipos gamer de alto rendimiento")
                 .build();
 
         when(service.actualizarCategoria(eq(1L), any(Categoria.class))).thenReturn(actualizada);
 
         String json = """
                 {
-                    "nombre": "Lácteos y Huevos",
-                    "descripcion": "Lácteos y huevos frescos"
+                    "nombre": "PC Gamer Pro",
+                    "grupo": "PC Gamer",
+                    "descripcion": "Equipos gamer de alto rendimiento"
                 }
                 """;
 
@@ -160,7 +166,8 @@ class CategoriaControllerTest {
                         .accept(MediaTypes.HAL_JSON)
                         .content(json))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.nombre").value("Lácteos y Huevos"))
+                .andExpect(jsonPath("$.nombre").value("PC Gamer Pro"))
+                .andExpect(jsonPath("$.grupo").value("PC Gamer"))
                 .andExpect(jsonPath("$._links.self.href").exists())
                 .andExpect(jsonPath("$._links.update.href").exists())
                 .andExpect(jsonPath("$._links.delete.href").exists());
@@ -175,7 +182,8 @@ class CategoriaControllerTest {
 
         String json = """
                 {
-                    "nombre": "X"
+                    "nombre": "X",
+                    "grupo": "Pruebas"
                 }
                 """;
 
@@ -192,19 +200,7 @@ class CategoriaControllerTest {
 
         mockMvc.perform(delete("/api/v2/categorias/1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.mensaje").value("Categoría eliminada correctamente"));
-
-        verify(service).eliminarCategoria(1L);
-    }
-
-    @Test
-    void deberiaRetornar400AlEliminarCategoriaConProductos() throws Exception {
-        doThrow(new RuntimeException("No se puede eliminar la categoría porque tiene productos asociados."))
-                .when(service).eliminarCategoria(1L);
-
-        mockMvc.perform(delete("/api/v2/categorias/1"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("No se puede eliminar la categoría porque tiene productos asociados."));
+                .andExpect(jsonPath("$.mensaje").value("Categoría desactivada correctamente"));
 
         verify(service).eliminarCategoria(1L);
     }

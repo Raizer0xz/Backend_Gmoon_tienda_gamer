@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
+import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,15 +39,20 @@ class ProductoServiceTest {
     void setUp() {
         categoria = Categoria.builder()
                 .id(1L)
-                .nombre("Lácteos")
-                .descripcion("Productos lácteos")
+                .nombre("Videojuegos Deportes")
+                .grupo("Videojuegos")
+                .descripcion("Juegos deportivos")
+                .activo(true)
                 .build();
 
         producto = Producto.builder()
                 .id(1L)
-                .nombre("Leche Entera")
-                .descripcion("Leche entera 1L")
-                .unidadMedida("litro")
+                .nombre("FC 2027 PS5")
+                .descripcion("Juego deportivo para PS5")
+                .precio(new BigDecimal("79990.00"))
+                .stock(4)
+                .descuento(0)
+                .imagenUrl("/img/Juegos_Deportes/FC27_PS5.png")
                 .activo(true)
                 .categoria(categoria)
                 .build();
@@ -57,24 +63,26 @@ class ProductoServiceTest {
     // -------------------------------------------------------------------------
     @Test
     void listarProductos_deberiaRetornarProductosActivos() {
-        when(productoRepository.findByActivoTrue()).thenReturn(List.of(producto));
+        when(productoRepository.findByActivoTrueAndCategoriaActivoTrue()).thenReturn(List.of(producto));
 
         List<Producto> resultado = productoService.listarProductos();
 
         assertThat(resultado).hasSize(1);
-        assertThat(resultado.get(0).getNombre()).isEqualTo("Leche Entera");
+        assertThat(resultado.get(0).getNombre()).isEqualTo("FC 2027 PS5");
+        assertThat(resultado.get(0).getPrecio()).isEqualByComparingTo("79990.00");
+        assertThat(resultado.get(0).getStock()).isEqualTo(4);
         assertThat(resultado.get(0).getActivo()).isTrue();
-        verify(productoRepository).findByActivoTrue();
+        verify(productoRepository).findByActivoTrueAndCategoriaActivoTrue();
     }
 
     @Test
     void listarProductos_deberiaRetornarListaVaciaCuandoNoHayActivos() {
-        when(productoRepository.findByActivoTrue()).thenReturn(List.of());
+        when(productoRepository.findByActivoTrueAndCategoriaActivoTrue()).thenReturn(List.of());
 
         List<Producto> resultado = productoService.listarProductos();
 
         assertThat(resultado).isEmpty();
-        verify(productoRepository).findByActivoTrue();
+        verify(productoRepository).findByActivoTrueAndCategoriaActivoTrue();
     }
 
     // -------------------------------------------------------------------------
@@ -88,7 +96,7 @@ class ProductoServiceTest {
 
         assertThat(resultado).isNotNull();
         assertThat(resultado.getId()).isEqualTo(1L);
-        assertThat(resultado.getNombre()).isEqualTo("Leche Entera");
+        assertThat(resultado.getNombre()).isEqualTo("FC 2027 PS5");
         verify(productoRepository).findById(1L);
     }
 
@@ -109,14 +117,15 @@ class ProductoServiceTest {
     @Test
     void listarPorCategoria_deberiaRetornarProductosDeLaCategoria() {
         when(categoriaRepository.findById(1L)).thenReturn(Optional.of(categoria));
-        when(productoRepository.findByCategoriaIdAndActivoTrue(1L)).thenReturn(List.of(producto));
+        when(productoRepository.findByCategoriaIdAndActivoTrueAndCategoriaActivoTrue(1L))
+                .thenReturn(List.of(producto));
 
         List<Producto> resultado = productoService.listarPorCategoria(1L);
 
         assertThat(resultado).hasSize(1);
         assertThat(resultado.get(0).getCategoria().getId()).isEqualTo(1L);
         verify(categoriaRepository).findById(1L);
-        verify(productoRepository).findByCategoriaIdAndActivoTrue(1L);
+        verify(productoRepository).findByCategoriaIdAndActivoTrueAndCategoriaActivoTrue(1L);
     }
 
     @Test
@@ -128,7 +137,7 @@ class ProductoServiceTest {
                 .hasMessageContaining("Categoría no encontrada: 99");
 
         verify(categoriaRepository).findById(99L);
-        verify(productoRepository, never()).findByCategoriaIdAndActivoTrue(any());
+        verify(productoRepository, never()).findByCategoriaIdAndActivoTrueAndCategoriaActivoTrue(any());
     }
 
     // -------------------------------------------------------------------------
@@ -136,14 +145,14 @@ class ProductoServiceTest {
     // -------------------------------------------------------------------------
     @Test
     void buscarPorNombre_deberiaRetornarProductosQueCoinciden() {
-        when(productoRepository.findByNombreContainingIgnoreCaseAndActivoTrue("leche"))
+        when(productoRepository.findByNombreContainingIgnoreCaseAndActivoTrueAndCategoriaActivoTrue("FC"))
                 .thenReturn(List.of(producto));
 
-        List<Producto> resultado = productoService.buscarPorNombre("leche");
+        List<Producto> resultado = productoService.buscarPorNombre("FC");
 
         assertThat(resultado).hasSize(1);
-        assertThat(resultado.get(0).getNombre()).containsIgnoringCase("leche");
-        verify(productoRepository).findByNombreContainingIgnoreCaseAndActivoTrue("leche");
+        assertThat(resultado.get(0).getNombre()).containsIgnoringCase("FC");
+        verify(productoRepository).findByNombreContainingIgnoreCaseAndActivoTrueAndCategoriaActivoTrue("FC");
     }
 
     // -------------------------------------------------------------------------
@@ -157,7 +166,7 @@ class ProductoServiceTest {
         Producto resultado = productoService.crearProducto(producto);
 
         assertThat(resultado).isNotNull();
-        assertThat(resultado.getNombre()).isEqualTo("Leche Entera");
+        assertThat(resultado.getNombre()).isEqualTo("FC 2027 PS5");
         verify(categoriaRepository).findById(1L);
         verify(productoRepository).save(producto);
     }
@@ -181,9 +190,13 @@ class ProductoServiceTest {
     void actualizarProducto_deberiaActualizarYRetornarProducto() {
         Producto datosNuevos = Producto.builder()
                 .id(1L)
-                .nombre("Leche Descremada")
-                .descripcion("Leche descremada 1L")
-                .unidadMedida("litro")
+                .nombre("FC 2026 PS5")
+                .descripcion("Juego deportivo PS5")
+                .imagenUrl("/img/Juegos_Deportes/FC26_PS5.png")
+                .imagenInicio("/img/Juegos_Deportes/FC26_PS5.png")
+                .precio(new BigDecimal("49990.00"))
+                .stock(8)
+                .descuento(15)
                 .categoria(categoria)
                 .build();
 
@@ -193,7 +206,10 @@ class ProductoServiceTest {
 
         Producto resultado = productoService.actualizarProducto(1L, datosNuevos);
 
-        assertThat(resultado.getNombre()).isEqualTo("Leche Descremada");
+        assertThat(resultado.getNombre()).isEqualTo("FC 2026 PS5");
+        assertThat(resultado.getPrecio()).isEqualByComparingTo("49990.00");
+        assertThat(resultado.getStock()).isEqualTo(8);
+        assertThat(resultado.getDescuento()).isEqualTo(15);
         verify(productoRepository).findById(1L);
         verify(categoriaRepository).findById(1L);
         verify(productoRepository).save(any(Producto.class));

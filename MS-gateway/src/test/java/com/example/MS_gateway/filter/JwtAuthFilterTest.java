@@ -72,6 +72,15 @@ class JwtAuthFilterTest {
     }
 
     @Test
+    void deniesUnauthenticatedRequestsToRemovedBranchPriceApi() {
+        MockServerWebExchange exchange = exchange(HttpMethod.GET, "/api/v2/precios/producto/1", null);
+
+        filter.apply(new JwtAuthFilter.Config()).filter(exchange, request -> Mono.empty()).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
     void deniesUnauthenticatedBoletaRead() {
         MockServerWebExchange exchange = exchange(HttpMethod.GET, "/api/v1/boletas", null);
 

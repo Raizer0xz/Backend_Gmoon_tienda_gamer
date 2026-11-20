@@ -18,8 +18,8 @@ public class CategoriaService {
 
     @Transactional(readOnly = true)
     public List<Categoria> listarCategorias() {
-        log.info("Listando todas las categorías");
-        return categoriaRepository.findAll();
+        log.info("Listando categorías activas");
+        return categoriaRepository.findByActivoTrue();
     }
 
     @Transactional(readOnly = true)
@@ -38,6 +38,7 @@ public class CategoriaService {
     public Categoria actualizarCategoria(Long id, Categoria datos) {
         Categoria existente = obtenerPorId(id);
         existente.setNombre(datos.getNombre());
+        existente.setGrupo(datos.getGrupo());
         existente.setDescripcion(datos.getDescripcion());
         existente.setImagenUrl(datos.getImagenUrl());
         log.info("Actualizando categoría: {}", id);
@@ -46,13 +47,9 @@ public class CategoriaService {
 
     @Transactional
     public void eliminarCategoria(Long id) {
-        obtenerPorId(id);
-        try {
-            categoriaRepository.deleteById(id);
-            log.info("Categoría {} eliminada", id);
-        } catch (Exception e) {
-            throw new RuntimeException(
-                    "No se puede eliminar la categoría porque tiene productos asociados.");
-        }
+        Categoria categoria = obtenerPorId(id);
+        categoria.setActivo(false);
+        categoriaRepository.save(categoria);
+        log.info("Categoría {} desactivada", id);
     }
 }

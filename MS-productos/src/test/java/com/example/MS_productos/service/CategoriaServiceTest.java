@@ -32,9 +32,11 @@ class CategoriaServiceTest {
     void setUp() {
         categoria = Categoria.builder()
                 .id(1L)
-                .nombre("Lácteos")
-                .descripcion("Productos lácteos")
+                .nombre("Videojuegos Deportes")
+                .grupo("Videojuegos")
+                .descripcion("Juegos deportivos")
                 .imagenUrl("https://img.example.com/lacteos.png")
+                .activo(true)
                 .build();
     }
 
@@ -42,24 +44,24 @@ class CategoriaServiceTest {
     // listarCategorias()
     // -------------------------------------------------------------------------
     @Test
-    void listarCategorias_deberiaRetornarTodasLasCategorias() {
-        when(categoriaRepository.findAll()).thenReturn(List.of(categoria));
+    void listarCategorias_deberiaRetornarCategoriasActivas() {
+        when(categoriaRepository.findByActivoTrue()).thenReturn(List.of(categoria));
 
         List<Categoria> resultado = categoriaService.listarCategorias();
 
         assertThat(resultado).hasSize(1);
-        assertThat(resultado.get(0).getNombre()).isEqualTo("Lácteos");
-        verify(categoriaRepository).findAll();
+        assertThat(resultado.get(0).getNombre()).isEqualTo("Videojuegos Deportes");
+        verify(categoriaRepository).findByActivoTrue();
     }
 
     @Test
     void listarCategorias_deberiaRetornarListaVaciaCuandoNoHayCategorias() {
-        when(categoriaRepository.findAll()).thenReturn(List.of());
+        when(categoriaRepository.findByActivoTrue()).thenReturn(List.of());
 
         List<Categoria> resultado = categoriaService.listarCategorias();
 
         assertThat(resultado).isEmpty();
-        verify(categoriaRepository).findAll();
+        verify(categoriaRepository).findByActivoTrue();
     }
 
     // -------------------------------------------------------------------------
@@ -73,7 +75,7 @@ class CategoriaServiceTest {
 
         assertThat(resultado).isNotNull();
         assertThat(resultado.getId()).isEqualTo(1L);
-        assertThat(resultado.getNombre()).isEqualTo("Lácteos");
+        assertThat(resultado.getNombre()).isEqualTo("Videojuegos Deportes");
         verify(categoriaRepository).findById(1L);
     }
 
@@ -98,7 +100,7 @@ class CategoriaServiceTest {
         Categoria resultado = categoriaService.crearCategoria(categoria);
 
         assertThat(resultado).isNotNull();
-        assertThat(resultado.getNombre()).isEqualTo("Lácteos");
+        assertThat(resultado.getNombre()).isEqualTo("Videojuegos Deportes");
         verify(categoriaRepository).save(categoria);
     }
 
@@ -109,8 +111,9 @@ class CategoriaServiceTest {
     void actualizarCategoria_deberiaActualizarYRetornarCategoria() {
         Categoria datosNuevos = Categoria.builder()
                 .id(1L)
-                .nombre("Lácteos y Huevos")
-                .descripcion("Lácteos y huevos frescos")
+                .nombre("PC Gamer Pro")
+                .grupo("PC Gamer")
+                .descripcion("Equipos gamer de alto rendimiento")
                 .build();
 
         when(categoriaRepository.findById(1L)).thenReturn(Optional.of(categoria));
@@ -118,8 +121,9 @@ class CategoriaServiceTest {
 
         Categoria resultado = categoriaService.actualizarCategoria(1L, datosNuevos);
 
-        assertThat(resultado.getNombre()).isEqualTo("Lácteos y Huevos");
-        assertThat(resultado.getDescripcion()).isEqualTo("Lácteos y huevos frescos");
+        assertThat(resultado.getNombre()).isEqualTo("PC Gamer Pro");
+        assertThat(resultado.getGrupo()).isEqualTo("PC Gamer");
+        assertThat(resultado.getDescripcion()).isEqualTo("Equipos gamer de alto rendimiento");
         verify(categoriaRepository).findById(1L);
         verify(categoriaRepository).save(any(Categoria.class));
     }
@@ -140,14 +144,15 @@ class CategoriaServiceTest {
     // eliminarCategoria()
     // -------------------------------------------------------------------------
     @Test
-    void eliminarCategoria_deberiaEliminarCuandoExisteYNoTieneProductos() {
+    void eliminarCategoria_deberiaDesactivarCuandoExiste() {
         when(categoriaRepository.findById(1L)).thenReturn(Optional.of(categoria));
-        doNothing().when(categoriaRepository).deleteById(1L);
+        when(categoriaRepository.save(any(Categoria.class))).thenReturn(categoria);
 
         categoriaService.eliminarCategoria(1L);
 
         verify(categoriaRepository).findById(1L);
-        verify(categoriaRepository).deleteById(1L);
+        assertThat(categoria.getActivo()).isFalse();
+        verify(categoriaRepository).save(categoria);
     }
 
     @Test
@@ -159,20 +164,6 @@ class CategoriaServiceTest {
                 .hasMessageContaining("Categoría no encontrada: 99");
 
         verify(categoriaRepository).findById(99L);
-        verify(categoriaRepository, never()).deleteById(any());
-    }
-
-    @Test
-    void eliminarCategoria_deberiaLanzarExcepcionCuandoTieneProductosAsociados() {
-        when(categoriaRepository.findById(1L)).thenReturn(Optional.of(categoria));
-        doThrow(new RuntimeException("constraint violation"))
-                .when(categoriaRepository).deleteById(1L);
-
-        assertThatThrownBy(() -> categoriaService.eliminarCategoria(1L))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("No se puede eliminar la categoría porque tiene productos asociados.");
-
-        verify(categoriaRepository).findById(1L);
-        verify(categoriaRepository).deleteById(1L);
+        verify(categoriaRepository, never()).save(any());
     }
 }

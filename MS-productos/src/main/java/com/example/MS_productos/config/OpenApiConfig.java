@@ -16,7 +16,7 @@ public class OpenApiConfig {
         final String securitySchemeName = "bearerAuth";
         return new OpenAPI()
                 .info(new Info()
-                        .title("Market Express - API Productos")
+                        .title("Gmoon - API Productos")
                         .version("1.0")
                         .description("Microservicio de gestion de productos y categorias")
                         .contact(new Contact()

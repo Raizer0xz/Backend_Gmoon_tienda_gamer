@@ -12,6 +12,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -33,17 +34,21 @@ class ProductoControllerTest {
     private Categoria categoriaEjemplo() {
         return Categoria.builder()
                 .id(1L)
-                .nombre("Lácteos")
-                .descripcion("Productos lácteos")
+                .nombre("Videojuegos Deportes")
+                .grupo("Videojuegos")
+                .descripcion("Juegos deportivos")
                 .build();
     }
 
     private Producto productoEjemplo() {
         return Producto.builder()
                 .id(1L)
-                .nombre("Leche Entera")
-                .descripcion("Leche entera 1L")
-                .unidadMedida("litro")
+                .nombre("FC 2027 PS5")
+                .descripcion("Juego deportivo para PS5")
+                .precio(new BigDecimal("79990.00"))
+                .stock(4)
+                .descuento(0)
+                .imagenUrl("/img/Juegos_Deportes/FC27_PS5.png")
                 .activo(true)
                 .categoria(categoriaEjemplo())
                 .build();
@@ -56,7 +61,11 @@ class ProductoControllerTest {
         mockMvc.perform(get("/api/v2/productos").accept(MediaTypes.HAL_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$._embedded.productoList[0].id").value(1))
-                .andExpect(jsonPath("$._embedded.productoList[0].nombre").value("Leche Entera"))
+                .andExpect(jsonPath("$._embedded.productoList[0].nombre").value("FC 2027 PS5"))
+                .andExpect(jsonPath("$._embedded.productoList[0].precio").value(79990.00))
+                .andExpect(jsonPath("$._embedded.productoList[0].stock").value(4))
+                .andExpect(jsonPath("$._embedded.productoList[0].descuento").value(0))
+                .andExpect(jsonPath("$._embedded.productoList[0].categoria.grupo").value("Videojuegos"))
                 .andExpect(jsonPath("$._embedded.productoList[0].activo").value(true))
                 .andExpect(jsonPath("$._embedded.productoList[0]._links.self.href").exists())
                 .andExpect(jsonPath("$._embedded.productoList[0]._links.todos.href").exists())
@@ -84,13 +93,14 @@ class ProductoControllerTest {
         mockMvc.perform(get("/api/v2/productos/1").accept(MediaTypes.HAL_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.nombre").value("Leche Entera"))
+                .andExpect(jsonPath("$.nombre").value("FC 2027 PS5"))
+                .andExpect(jsonPath("$.precio").value(79990.00))
+                .andExpect(jsonPath("$.stock").value(4))
                 .andExpect(jsonPath("$._links.self.href").exists())
                 .andExpect(jsonPath("$._links.todos.href").exists())
                 .andExpect(jsonPath("$._links.update.href").exists())
                 .andExpect(jsonPath("$._links.desactivar.href").exists())
-                .andExpect(jsonPath("$._links.categoria.href").exists())
-                .andExpect(jsonPath("$._links.precios.href").exists());
+                .andExpect(jsonPath("$._links.categoria.href").exists());
 
         verify(service).obtenerPorId(1L);
     }
@@ -141,7 +151,7 @@ class ProductoControllerTest {
                         .param("nombre", "leche")
                         .accept(MediaTypes.HAL_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$._embedded.productoList[0].nombre").value("Leche Entera"))
+                .andExpect(jsonPath("$._embedded.productoList[0].nombre").value("FC 2027 PS5"))
                 .andExpect(jsonPath("$._links.self.href").exists())
                 .andExpect(jsonPath("$._links.todos.href").exists());
 
@@ -154,9 +164,12 @@ class ProductoControllerTest {
 
         String json = """
                 {
-                    "nombre": "Leche Entera",
-                    "descripcion": "Leche entera 1L",
-                    "unidadMedida": "litro",
+                    "nombre": "FC 2027 PS5",
+                    "descripcion": "Juego deportivo para PS5",
+                    "precio": 79990,
+                    "stock": 4,
+                    "descuento": 0,
+                    "imagenUrl": "/img/Juegos_Deportes/FC27_PS5.png",
                     "categoria": { "id": 1 }
                 }
                 """;
@@ -167,7 +180,10 @@ class ProductoControllerTest {
                         .content(json))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.nombre").value("Leche Entera"))
+                .andExpect(jsonPath("$.nombre").value("FC 2027 PS5"))
+                .andExpect(jsonPath("$.precio").value(79990.00))
+                .andExpect(jsonPath("$.stock").value(4))
+                .andExpect(jsonPath("$.descuento").value(0))
                 .andExpect(jsonPath("$._links.self.href").exists())
                 .andExpect(jsonPath("$._links.todos.href").exists())
                 .andExpect(jsonPath("$._links.update.href").exists())
@@ -196,9 +212,12 @@ class ProductoControllerTest {
     void deberiaActualizarProducto() throws Exception {
         Producto actualizado = Producto.builder()
                 .id(1L)
-                .nombre("Leche Descremada")
-                .descripcion("Leche descremada 1L")
-                .unidadMedida("litro")
+                .nombre("FC 2026 PS5")
+                .descripcion("Juego deportivo PS5")
+                .precio(new BigDecimal("49990.00"))
+                .stock(8)
+                .descuento(15)
+                .imagenUrl("/img/Juegos_Deportes/FC26_PS5.png")
                 .activo(true)
                 .categoria(categoriaEjemplo())
                 .build();
@@ -207,9 +226,12 @@ class ProductoControllerTest {
 
         String json = """
                 {
-                    "nombre": "Leche Descremada",
-                    "descripcion": "Leche descremada 1L",
-                    "unidadMedida": "litro",
+                    "nombre": "FC 2026 PS5",
+                    "descripcion": "Juego deportivo PS5",
+                    "precio": 49990,
+                    "stock": 8,
+                    "descuento": 15,
+                    "imagenUrl": "/img/Juegos_Deportes/FC26_PS5.png",
                     "categoria": { "id": 1 }
                 }
                 """;
@@ -219,7 +241,10 @@ class ProductoControllerTest {
                         .accept(MediaTypes.HAL_JSON)
                         .content(json))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.nombre").value("Leche Descremada"))
+                .andExpect(jsonPath("$.nombre").value("FC 2026 PS5"))
+                .andExpect(jsonPath("$.stock").value(8))
+                .andExpect(jsonPath("$.precio").value(49990.00))
+                .andExpect(jsonPath("$.descuento").value(15))
                 .andExpect(jsonPath("$._links.self.href").exists())
                 .andExpect(jsonPath("$._links.update.href").exists())
                 .andExpect(jsonPath("$._links.desactivar.href").exists());
@@ -235,6 +260,9 @@ class ProductoControllerTest {
         String json = """
                 {
                     "nombre": "X",
+                    "precio": 1,
+                    "stock": 0,
+                    "descuento": 0,
                     "categoria": { "id": 1 }
                 }
                 """;
