@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "pedido")
+@Table(name = "boleta")
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Builder

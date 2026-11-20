@@ -4,7 +4,7 @@ Microservicio de compras y comprobantes del catálogo Gmoon. La ruta principal d
 
 ## Registrar una compra
 
-El gateway valida el JWT y entrega `X-Usuario-Id` al microservicio. El identificador del comprador se toma de ese encabezado, no del JSON enviado por el cliente. El pedido parte en estado `PENDIENTE` y su total se calcula sumando cantidad por precio unitario.
+El gateway valida el JWT y entrega `X-Usuario-Id` al microservicio. El identificador del comprador se toma de ese encabezado, no del JSON enviado por el cliente. La boleta parte en estado `PENDIENTE` y su total se calcula sumando cantidad por precio unitario.
 
 ```json
 {
@@ -38,6 +38,6 @@ El gateway limita el acceso a las compras mediante JWT y permisos por rol.
 
 ## Base de datos y pruebas
 
-Flyway aplica `V2__adaptar_pedidos_gmoon.sql` después de la tabla inicial. La migración conserva pedidos anteriores, asigna un número de referencia y crea la tabla de líneas; los pedidos históricos no tienen detalle de productos.
+Flyway aplica las migraciones V1 y V2 para crear y adaptar el esquema inicial, y V3 renombra las tablas a `boleta` y `detalle_boleta` sin perder los registros existentes. También actualiza la clave foránea de las líneas para que apunte a `boleta`. Los registros históricos no tienen detalle de productos.
 
 Ejecuta `.\mvnw.cmd test` desde esta carpeta. La prueba que carga el contexto completo requiere MySQL disponible según `application.properties`.
