@@ -33,7 +33,6 @@ class ServiceUsuarioTest {
                 .id(1L)
                 .nombre("Juan Pérez")
                 .email("juan@mail.com")
-                .passwordHash("hashed123")
                 .telefono("912345678")
                 .rol("CLIENTE")
                 .build();
@@ -119,7 +118,7 @@ class ServiceUsuarioTest {
     void findByRol_deberiaRetornarUsuariosConEseRol() {
         Usuario admin = Usuario.builder()
                 .id(2L).nombre("Admin").email("admin@mail.com")
-                .passwordHash("h").rol("ADMIN").build();
+                .rol("ADMIN").build();
 
         when(repository.findByRol("ADMIN")).thenReturn(List.of(admin));
 
@@ -132,13 +131,15 @@ class ServiceUsuarioTest {
 
     @Test
     void crearUsuarioPublico_deberiaForzarRolCliente() {
+        usuario.setEmail(" Juan@MAIL.com ");
         usuario.setRol("ADMIN");
-        when(repository.existsByEmail(usuario.getEmail())).thenReturn(false);
+        when(repository.existsByEmail("juan@mail.com")).thenReturn(false);
         when(repository.save(any(Usuario.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         Usuario creado = serviceUsuario.crearUsuario(usuario, null);
 
         assertThat(creado.getRol()).isEqualTo("CLIENTE");
+        assertThat(creado.getEmail()).isEqualTo("juan@mail.com");
         verify(repository).save(usuario);
     }
 
@@ -155,6 +156,17 @@ class ServiceUsuarioTest {
     }
 
     @Test
+    void crearUsuarioAdminSinRol_deberiaAsignarRolCliente() {
+        usuario.setRol(null);
+        when(repository.existsByEmail(usuario.getEmail())).thenReturn(false);
+        when(repository.save(any(Usuario.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Usuario creado = serviceUsuario.crearUsuario(usuario, "ADMIN");
+
+        assertThat(creado.getRol()).isEqualTo("CLIENTE");
+    }
+
+    @Test
     void crearUsuarioVendedor_deberiaRechazarAsignacionDeRol() {
         usuario.setRol("ADMIN");
         when(repository.existsByEmail(usuario.getEmail())).thenReturn(false);
@@ -162,6 +174,44 @@ class ServiceUsuarioTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(
                         () -> serviceUsuario.crearUsuario(usuario, "VENDEDOR"))
                 .isInstanceOf(SecurityException.class);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void actualizarUsuario_deberiaNormalizarEmailYGuardarCambios() {
+        Usuario datosNuevos = Usuario.builder()
+                .nombre("Juan Actualizado")
+                .email(" JUAN.NUEVO@MAIL.COM ")
+                .telefono("999999999")
+                .rol("ADMIN")
+                .build();
+        when(repository.findById(1L)).thenReturn(Optional.of(usuario));
+        when(repository.existsByEmail("juan.nuevo@mail.com")).thenReturn(false);
+        when(repository.save(any(Usuario.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Optional<Usuario> resultado = serviceUsuario.actualizarUsuario(1L, datosNuevos);
+
+        assertThat(resultado).isPresent();
+        assertThat(resultado.get().getNombre()).isEqualTo("Juan Actualizado");
+        assertThat(resultado.get().getEmail()).isEqualTo("juan.nuevo@mail.com");
+        assertThat(resultado.get().getRol()).isEqualTo("ADMIN");
+        verify(repository).save(usuario);
+    }
+
+    @Test
+    void actualizarUsuario_deberiaRechazarEmailDuplicado() {
+        Usuario datosNuevos = Usuario.builder()
+                .nombre("Otro")
+                .email("otro@mail.com")
+                .rol("CLIENTE")
+                .build();
+        when(repository.findById(1L)).thenReturn(Optional.of(usuario));
+        when(repository.existsByEmail("otro@mail.com")).thenReturn(true);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> serviceUsuario.actualizarUsuario(1L, datosNuevos))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Ya existe un usuario con ese email");
         verify(repository, never()).save(any());
     }
 

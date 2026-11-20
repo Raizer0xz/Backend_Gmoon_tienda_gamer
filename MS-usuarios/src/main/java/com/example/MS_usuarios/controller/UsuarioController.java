@@ -1,5 +1,6 @@
 package com.example.MS_usuarios.controller;
 
+import com.example.MS_usuarios.dto.CrearUsuarioRequest;
 import com.example.MS_usuarios.model.Usuario;
 import com.example.MS_usuarios.service.ServiceUsuario;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,7 +40,7 @@ import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.*;
 @RequestMapping("/api/v1/usuarios")
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "Usuarios", description = "Gestión de usuarios del sistema Market Express")
+@Tag(name = "Usuarios", description = "Gestión de usuarios de Gmoon")
 @SecurityRequirement(name = "bearerAuth")
 public class UsuarioController {
 
@@ -50,7 +51,7 @@ public class UsuarioController {
     // -------------------------------------------------------------------------
     @Operation(
             summary = "Crear nuevo usuario",
-            description = "Registra un nuevo usuario en el sistema. El email debe ser único."
+            description = "Crea el perfil del usuario. La contraseña y el inicio de sesión se administran en MS-seguridad."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Usuario creado exitosamente",
@@ -62,8 +63,14 @@ public class UsuarioController {
     })
     @PostMapping
     public ResponseEntity<?> crearUsuario(
-            @Valid @RequestBody Usuario usuario,
+            @Valid @RequestBody CrearUsuarioRequest request,
             @RequestHeader(name = "X-Usuario-Rol", required = false) String rolActor) {
+        Usuario usuario = Usuario.builder()
+                .nombre(request.getNombre())
+                .email(request.getEmail())
+                .telefono(request.getTelefono())
+                .rol(request.getRol())
+                .build();
         log.info("Solicitud de creacion de usuario con email: {}", usuario.getEmail());
         try {
             Usuario guardado = serviceUsuario.crearUsuario(usuario, rolActor);
@@ -196,12 +203,13 @@ public class UsuarioController {
     // -------------------------------------------------------------------------
     @Operation(
             summary = "Actualizar usuario",
-            description = "Actualiza nombre, email, teléfono y rol del usuario. El passwordHash NO se modifica aquí."
+            description = "Actualiza nombre, email, teléfono y rol. Las credenciales se administran en MS-seguridad."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Usuario actualizado",
                     content = @Content(schema = @Schema(implementation = Usuario.class))),
             @ApiResponse(responseCode = "400", description = "Datos inválidos"),
+            @ApiResponse(responseCode = "409", description = "Ya existe un usuario con ese email"),
             @ApiResponse(responseCode = "404", description = "Usuario no encontrado")
     })
     @PutMapping("/{id}")
@@ -210,20 +218,20 @@ public class UsuarioController {
             @PathVariable Long id,
             @Valid @RequestBody Usuario datosNuevos) {
         log.info("Actualizando usuario con id: {}", id);
-        return serviceUsuario.findById(id)
-                .<ResponseEntity<?>>map(existente -> {
-                    existente.setNombre(datosNuevos.getNombre());
-                    existente.setEmail(datosNuevos.getEmail());
-                    existente.setTelefono(datosNuevos.getTelefono());
-                    existente.setRol(datosNuevos.getRol());
-                    // passwordHash NO se actualiza aquí — responsabilidad de MS-seguridad
-                    Usuario actualizado = serviceUsuario.save(existente);
-                    log.info("Usuario {} actualizado correctamente", id);
-                    agregarLinks(actualizado);
-                    return ResponseEntity.ok(actualizado);
-                })
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(Map.of("error", "Usuario no encontrado con id: " + id)));
+        try {
+            return serviceUsuario.actualizarUsuario(id, datosNuevos)
+                    .<ResponseEntity<?>>map(actualizado -> {
+                        log.info("Usuario {} actualizado correctamente", id);
+                        agregarLinks(actualizado);
+                        return ResponseEntity.ok(actualizado);
+                    })
+                    .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body(Map.of("error", "Usuario no encontrado con id: " + id)));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     // -------------------------------------------------------------------------

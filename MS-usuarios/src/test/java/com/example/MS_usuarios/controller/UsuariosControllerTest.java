@@ -9,6 +9,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.hateoas.MediaTypes;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Optional;
@@ -20,6 +21,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @WebMvcTest(UsuarioController.class)
 @AutoConfigureMockMvc(addFilters = false)   // desactiva los filtros JWT/seguridad para el test
@@ -39,7 +41,6 @@ class UsuarioControllerTest {
                 .id(1L)
                 .nombre("Juan Pérez")
                 .email("juan@mail.com")
-                .passwordHash("hashed123")
                 .telefono("912345678")
                 .rol("CLIENTE")
                 .build();
@@ -130,10 +131,7 @@ class UsuarioControllerTest {
         String json = """
                 {
                     "nombre": "Juan Pérez",
-                    "email": "juan@mail.com",
-                    "passwordHash": "hashed123",
-                    "telefono": "912345678",
-                    "rol": "CLIENTE"
+                    "email": "juan@mail.com"
                 }
                 """;
 
@@ -146,13 +144,18 @@ class UsuarioControllerTest {
                 .andExpect(jsonPath("$.nombre").value("Juan Pérez"))
                 .andExpect(jsonPath("$.email").value("juan@mail.com"))
                 .andExpect(jsonPath("$.rol").value("CLIENTE"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
                 // HATEOAS links presentes en la respuesta de creación
                 .andExpect(jsonPath("$._links.self.href").exists())
                 .andExpect(jsonPath("$._links.todos.href").exists())
                 .andExpect(jsonPath("$._links.update.href").exists())
                 .andExpect(jsonPath("$._links.delete.href").exists());
 
-        verify(serviceUsuario).crearUsuario(any(Usuario.class), isNull());
+        ArgumentCaptor<Usuario> usuarioCaptor = ArgumentCaptor.forClass(Usuario.class);
+        verify(serviceUsuario).crearUsuario(usuarioCaptor.capture(), isNull());
+        assertThat(usuarioCaptor.getValue().getNombre()).isEqualTo("Juan Pérez");
+        assertThat(usuarioCaptor.getValue().getEmail()).isEqualTo("juan@mail.com");
+        assertThat(usuarioCaptor.getValue().getRol()).isNull();
     }
 
     // -------------------------------------------------------------------------
@@ -166,9 +169,7 @@ class UsuarioControllerTest {
         String json = """
                 {
                     "nombre": "Juan Pérez",
-                    "email": "juan@mail.com",
-                    "passwordHash": "hashed123",
-                    "rol": "CLIENTE"
+                    "email": "juan@mail.com"
                 }
                 """;
 
@@ -207,19 +208,17 @@ class UsuarioControllerTest {
                 .id(1L)
                 .nombre("Juan Actualizado")
                 .email("juan.nuevo@mail.com")
-                .passwordHash("hashed123")
                 .telefono("999999999")
                 .rol("ADMIN")
                 .build();
 
-        when(serviceUsuario.findById(1L)).thenReturn(Optional.of(usuarioEjemplo()));
-        when(serviceUsuario.save(any(Usuario.class))).thenReturn(usuarioActualizado);
+        when(serviceUsuario.actualizarUsuario(eq(1L), any(Usuario.class)))
+                .thenReturn(Optional.of(usuarioActualizado));
 
         String json = """
                 {
                     "nombre": "Juan Actualizado",
                     "email": "juan.nuevo@mail.com",
-                    "passwordHash": "hashed123",
                     "telefono": "999999999",
                     "rol": "ADMIN"
                 }
@@ -238,8 +237,7 @@ class UsuarioControllerTest {
                 .andExpect(jsonPath("$._links.update.href").exists())
                 .andExpect(jsonPath("$._links.delete.href").exists());
 
-        verify(serviceUsuario).findById(1L);
-        verify(serviceUsuario).save(any(Usuario.class));
+        verify(serviceUsuario).actualizarUsuario(eq(1L), any(Usuario.class));
     }
 
     // -------------------------------------------------------------------------
@@ -247,13 +245,13 @@ class UsuarioControllerTest {
     // -------------------------------------------------------------------------
     @Test
     void deberiaRetornar404AlActualizarUsuarioInexistente() throws Exception {
-        when(serviceUsuario.findById(99L)).thenReturn(Optional.empty());
+        when(serviceUsuario.actualizarUsuario(eq(99L), any(Usuario.class)))
+                .thenReturn(Optional.empty());
 
         String json = """
                 {
                     "nombre": "Nadie",
                     "email": "nadie@mail.com",
-                    "passwordHash": "hashed",
                     "rol": "CLIENTE"
                 }
                 """;
@@ -264,7 +262,27 @@ class UsuarioControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("Usuario no encontrado con id: 99"));
 
-        verify(serviceUsuario).findById(99L);
+        verify(serviceUsuario).actualizarUsuario(eq(99L), any(Usuario.class));
+    }
+
+    @Test
+    void deberiaRetornar409AlActualizarConEmailExistente() throws Exception {
+        when(serviceUsuario.actualizarUsuario(eq(1L), any(Usuario.class)))
+                .thenThrow(new IllegalStateException("Ya existe un usuario con ese email"));
+
+        String json = """
+                {
+                    "nombre": "Juan",
+                    "email": "ocupado@mail.com",
+                    "rol": "CLIENTE"
+                }
+                """;
+
+        mockMvc.perform(put("/api/v1/usuarios/1")
+                        .contentType("application/json")
+                        .content(json))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("Ya existe un usuario con ese email"));
     }
 
     // -------------------------------------------------------------------------

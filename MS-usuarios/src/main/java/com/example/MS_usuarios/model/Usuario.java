@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.springframework.hateoas.RepresentationModel;
@@ -14,6 +15,7 @@ import org.springframework.hateoas.RepresentationModel;
 import java.time.LocalDateTime;
 
 @Data
+@EqualsAndHashCode(callSuper = false)
 @NoArgsConstructor
 @Builder
 @AllArgsConstructor
@@ -34,10 +36,6 @@ public class Usuario extends RepresentationModel<Usuario> {
     @Email(message = "Formato de email invalido")
     @Column(nullable = false, unique = true)
     private String email;
-
-    @NotBlank(message = "La contraseña es obligatoria")
-    @Column(name = "password_hash", nullable = false)
-    private String passwordHash;
 
     @Size(min = 9, max = 15, message = "Telefono entre 9 y 15 caracteres")
     @Column(length = 15)

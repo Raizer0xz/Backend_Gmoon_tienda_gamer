@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -23,7 +24,7 @@ public class ServiceUsuario {
     }
 
     public Optional<Usuario> findByEmail(String email) {
-        return repository.findByEmail(email);
+        return repository.findByEmail(normalizeEmail(email));
     }
 
     public List<Usuario> findByRol(String rol) {
@@ -31,7 +32,7 @@ public class ServiceUsuario {
     }
 
     public boolean existsByEmail(String email) {
-        return repository.existsByEmail(email);
+        return repository.existsByEmail(normalizeEmail(email));
     }
 
     public Usuario save(Usuario usuario) {
@@ -47,19 +48,36 @@ public class ServiceUsuario {
     }
 
     public Usuario crearUsuario(Usuario usuario, String rolActor) {
-        if (repository.existsByEmail(usuario.getEmail())) {
+        String email = normalizeEmail(usuario.getEmail());
+        if (repository.existsByEmail(email)) {
             throw new IllegalStateException("Ya existe un usuario con ese email");
         }
+        usuario.setEmail(email);
         if (rolActor == null || rolActor.isBlank()) {
             usuario.setRol("CLIENTE");
-        } else if ("ADMIN".equals(rolActor)) {
-            if (!List.of("CLIENTE", "VENDEDOR", "ADMIN").contains(usuario.getRol())) {
-                throw new IllegalArgumentException("El rol debe ser CLIENTE, VENDEDOR o ADMIN");
-            }
+        } else if ("ADMIN".equalsIgnoreCase(rolActor)) {
+            usuario.setRol(usuario.getRol() == null || usuario.getRol().isBlank()
+                    ? "CLIENTE"
+                    : normalizeRole(usuario.getRol()));
         } else {
             throw new SecurityException("Solo ADMIN puede asignar roles al crear usuarios");
         }
         return repository.save(usuario);
+    }
+
+    public Optional<Usuario> actualizarUsuario(Long id, Usuario datosNuevos) {
+        return repository.findById(id).map(existente -> {
+            String email = normalizeEmail(datosNuevos.getEmail());
+            if (!email.equals(normalizeEmail(existente.getEmail())) && repository.existsByEmail(email)) {
+                throw new IllegalStateException("Ya existe un usuario con ese email");
+            }
+
+            existente.setNombre(datosNuevos.getNombre());
+            existente.setEmail(email);
+            existente.setTelefono(datosNuevos.getTelefono());
+            existente.setRol(normalizeRole(datosNuevos.getRol()));
+            return repository.save(existente);
+        });
     }
 
     public boolean deleteById(Long id) {
@@ -67,5 +85,17 @@ public class ServiceUsuario {
             repository.delete(usuario);
             return true;
         }).orElse(false);
+    }
+
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeRole(String role) {
+        String normalizedRole = role == null ? "" : role.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("CLIENTE", "VENDEDOR", "ADMIN").contains(normalizedRole)) {
+            throw new IllegalArgumentException("El rol debe ser CLIENTE, VENDEDOR o ADMIN");
+        }
+        return normalizedRole;
     }
 }
