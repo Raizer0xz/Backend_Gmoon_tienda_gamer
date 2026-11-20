@@ -1,12 +1,13 @@
 package com.example.MS_pedidos.model;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -15,10 +16,14 @@ import org.springframework.hateoas.RepresentationModel;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "pedido")
 @Data
+@EqualsAndHashCode(callSuper = false)
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -34,8 +39,7 @@ public class Pedido extends RepresentationModel<Pedido> {
     @Column(name = "usuario_id", nullable = false)
     private Long usuarioId;
 
-    @NotNull(message = "La sucursal es obligatoria")
-    @Column(name = "sucursal_id", nullable = false)
+    @Column(name = "sucursal_id")
     private Long sucursalId;
 
     @Column(name = "carrito_id")
@@ -46,12 +50,30 @@ public class Pedido extends RepresentationModel<Pedido> {
     private EstadoPedido estado;
 
     @NotNull(message = "El total es obligatorio")
-    @Column(nullable = false, precision = 10, scale = 2)
+    @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal total;
 
-    @NotBlank(message = "La dirección de entrega es obligatoria")
-    @Column(name = "direccion_entrega", nullable = false)
+    @Column(name = "direccion_entrega")
     private String direccionEntrega;
+
+    @Column(name = "numero_pedido", nullable = false, unique = true, length = 40)
+    private String numeroPedido;
+
+    @Column(name = "cliente_nombre", length = 150)
+    private String clienteNombre;
+
+    @Column(name = "cliente_email", length = 254)
+    private String email;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_comprobante", nullable = false, length = 20)
+    private TipoComprobante tipoComprobante;
+
+    @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @Builder.Default
+    private List<DetallePedido> items = new ArrayList<>();
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -60,4 +82,8 @@ public class Pedido extends RepresentationModel<Pedido> {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    public static String generarNumeroPedido() {
+        return "GM-" + UUID.randomUUID();
+    }
 }

@@ -10,11 +10,11 @@ Gateway de entrada para los microservicios de Gmoon. Usa Eureka para localizar s
 | `GET /api/v1/productos/**` | `MS-PRODUCTOS` | Lectura pública; se reescribe temporalmente a `/api/v2/productos/**` |
 | `GET /api/v1/categorias/**` | `MS-PRODUCTOS` | Lectura pública; se reescribe temporalmente a `/api/v2/categorias/**` |
 | `/api/v1/usuarios/**` | `MS-USUARIOS` | Requiere JWT, excepto el alta pública por `POST` |
-| `/api/v1/boletas/**` | `MS-PEDIDOS` | Ruta versionada protegida; se habilita con la adaptación de `MS-pedidos` |
+| `/api/v1/boletas/**` | `MS-PEDIDOS` | Ruta versionada protegida para compras y comprobantes Gmoon |
 | `/api/v1/pedidos/**` | `MS-PEDIDOS` | Ruta antigua conservada temporalmente |
 | `/docs/{servicio}/v3/api-docs/**` | Microservicios | Especificación OpenAPI |
 
-Las rutas antiguas `/api/v2/productos/**` y `/api/v2/categorias/**` se mantienen durante la transición. Los precios por sucursal fueron retirados al adaptar `MS-productos`; el precio vigente ahora forma parte del producto.
+Las rutas antiguas `/api/v2/productos/**` y `/api/v2/categorias/**` se mantienen durante la transición. Los precios por sucursal fueron retirados al adaptar `MS-productos`; el precio vigente ahora forma parte del producto. `/api/v1/pedidos/**` se conserva como alias temporal de `/api/v1/boletas/**`.
 
 Las solicitudes con JWT válido reciben `X-Usuario-Id`, `X-Usuario-Email` y `X-Usuario-Rol` derivados del token; los valores enviados por el cliente se reemplazan. Los permisos por rol se aplican antes de reenviar la solicitud.
 

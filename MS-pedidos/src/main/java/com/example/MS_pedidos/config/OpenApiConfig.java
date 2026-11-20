@@ -16,9 +16,9 @@ public class OpenApiConfig {
         final String securitySchemeName = "bearerAuth";
         return new OpenAPI()
                 .info(new Info()
-                        .title("Market Express - API Pedidos")
+                        .title("Gmoon - API de boletas y pedidos")
                         .version("1.0")
-                        .description("Microservicio de gestion de pedidos")
+                        .description("Microservicio de compras, detalle de productos y comprobantes del catálogo Gmoon.")
                         .contact(new Contact()
                                 .name("Bastian, Omar, Eduardo")
                                 .email("b.floresseron2005@gmail.com")))

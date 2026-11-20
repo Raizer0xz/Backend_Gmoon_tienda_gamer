@@ -1,5 +1,6 @@
 package com.example.MS_pedidos.controller;
 
+import com.example.MS_pedidos.dto.CrearPedidoRequest;
 import com.example.MS_pedidos.model.EstadoPedido;
 import com.example.MS_pedidos.model.Pedido;
 import com.example.MS_pedidos.service.PedidoService;
@@ -25,10 +26,10 @@ import java.util.Map;
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.*;
 
 @RestController
-@RequestMapping("/api/v1/pedidos")
+@RequestMapping({"/api/v1/boletas", "/api/v1/pedidos"})
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "Pedidos", description = "Gestión de pedidos de Market Express")
+@Tag(name = "Boletas y pedidos", description = "Gestión de compras del catálogo Gmoon")
 @SecurityRequirement(name = "bearerAuth")
 public class PedidoController {
 
@@ -88,11 +89,11 @@ public class PedidoController {
     }
 
     // -------------------------------------------------------------------------
-    // GET /api/v1/pedidos/sucursal/{sucursalId}?estado=PENDIENTE
+    // GET /api/v1/pedidos/sucursal/{sucursalId}?estado=PENDIENTE (legacy records)
     // -------------------------------------------------------------------------
     @Operation(summary = "Listar pedidos por sucursal y estado",
             description = "Retorna pedidos filtrados por sucursal y estado. " +
-                    "Estados posibles: PENDIENTE, EN_PROCESO, ENTREGADO, CANCELADO.")
+                    "Estados posibles: PENDIENTE, CONFIRMADO, PREPARANDO, EN_CAMINO, ENTREGADO, CANCELADO.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Lista de pedidos retornada"),
             @ApiResponse(responseCode = "204", description = "No hay pedidos con ese filtro")
@@ -119,21 +120,23 @@ public class PedidoController {
     }
 
     // -------------------------------------------------------------------------
-    // POST /api/v1/pedidos
+    // POST /api/v1/boletas (also available under the legacy pedidos alias)
     // -------------------------------------------------------------------------
-    @Operation(summary = "Crear nuevo pedido",
-            description = "Registra un nuevo pedido en el sistema. " +
-                    "El pedido queda en estado PENDIENTE hasta que sea procesado.")
+    @Operation(summary = "Registrar una compra",
+            description = "Registra el detalle y el comprobante. El usuario se obtiene del JWT validado por el gateway y el total se calcula desde las líneas.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Pedido creado exitosamente",
                     content = @Content(schema = @Schema(implementation = Pedido.class))),
             @ApiResponse(responseCode = "400", description = "Datos del pedido inválidos",
-                    content = @Content(schema = @Schema(example = "{\"error\": \"El usuarioId es obligatorio\"}")))
+                    content = @Content(schema = @Schema(example = "{\"error\": \"Validacion fallida\"}")))
     })
     @PostMapping
-    public ResponseEntity<Pedido> save(@Valid @RequestBody Pedido pedido) {
-        log.info("Creando pedido para usuario: {}, sucursal: {}", pedido.getUsuarioId(), pedido.getSucursalId());
-        Pedido nuevo = service.save(pedido);
+    public ResponseEntity<Pedido> save(
+            @Parameter(hidden = true)
+            @RequestHeader("X-Usuario-Id") Long usuarioId,
+            @Valid @RequestBody CrearPedidoRequest request) {
+        log.info("Registrando compra para usuario: {}", usuarioId);
+        Pedido nuevo = service.crearPedido(usuarioId, request);
         log.info("Pedido creado con id: {}", nuevo.getId());
 
         agregarLinks(nuevo);
@@ -142,11 +145,10 @@ public class PedidoController {
     }
 
     // -------------------------------------------------------------------------
-    // PUT /api/v1/pedidos/{id}/estado?nuevoEstado=EN_PROCESO
+    // PUT /api/v1/boletas/{id}/estado?nuevoEstado=PREPARANDO
     // -------------------------------------------------------------------------
     @Operation(summary = "Cambiar estado del pedido",
-            description = "Actualiza el estado de un pedido. " +
-                    "Transiciones válidas: PENDIENTE → EN_PROCESO → ENTREGADO / CANCELADO.")
+            description = "Actualiza el estado del pedido usando uno de los valores del enum EstadoPedido.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Estado actualizado correctamente",
                     content = @Content(schema = @Schema(implementation = Pedido.class))),

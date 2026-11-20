@@ -1,7 +1,11 @@
 package com.example.MS_pedidos.controller;
 
+import com.example.MS_pedidos.dto.CrearDetallePedidoRequest;
+import com.example.MS_pedidos.dto.CrearPedidoRequest;
+import com.example.MS_pedidos.model.DetallePedido;
 import com.example.MS_pedidos.model.EstadoPedido;
 import com.example.MS_pedidos.model.Pedido;
+import com.example.MS_pedidos.model.TipoComprobante;
 import com.example.MS_pedidos.service.PedidoService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,11 +21,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 @WebMvcTest(PedidoController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -64,52 +71,85 @@ class PedidoControllerTest {
     void deberiaCrearPedido() throws Exception {
         Pedido pedido = new Pedido();
         pedido.setId(1L);
-        pedido.setUsuarioId(1L);
-        pedido.setSucursalId(10L);
-        pedido.setCarritoId(500L);
+        pedido.setUsuarioId(42L);
+        pedido.setNumeroPedido("GM-test");
+        pedido.setClienteNombre("Cliente Gmoon");
+        pedido.setEmail("cliente@example.com");
+        pedido.setTipoComprobante(TipoComprobante.BOLETA);
         pedido.setEstado(EstadoPedido.PENDIENTE);
-        pedido.setTotal(new BigDecimal("1550.50"));
-        pedido.setDireccionEntrega("Av. Siempreviva 742, Springfield");
+        pedido.setTotal(new BigDecimal("159980.00"));
+        DetallePedido item = new DetallePedido();
+        item.setProductoId("fc-27-ps5");
+        item.setNombre("FC 2027 PS5");
+        item.setCantidad(2);
+        item.setPrecioUnitario(new BigDecimal("79990.00"));
+        item.setPedido(pedido);
+        pedido.setItems(new ArrayList<>(List.of(item)));
 
-        when(service.save(any(Pedido.class))).thenReturn(pedido);
+        when(service.crearPedido(eq(42L), any(CrearPedidoRequest.class))).thenReturn(pedido);
 
         String json = """
                 {
-                    "usuarioId": 1,
-                    "sucursalId": 10,
-                    "carritoId": 500,
-                    "estado": "PENDIENTE",
-                    "total": 1550.50,
-                    "direccionEntrega": "Av. Siempreviva 742, Springfield"
+                    "clienteNombre": "Cliente Gmoon",
+                    "email": "cliente@example.com",
+                    "tipoComprobante": "boleta",
+                    "usuarioId": 999,
+                    "total": 1,
+                    "estado": "CANCELADO",
+                    "items": [
+                        {
+                            "id": "fc-27-ps5",
+                            "nombre": "FC 2027 PS5",
+                            "cantidad": 2,
+                            "precioUnitario": 79990.00
+                        }
+                    ]
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/pedidos")
+        mockMvc.perform(post("/api/v1/boletas")
                         .contentType("application/json")
                         .accept(MediaTypes.HAL_JSON)
+                        .header("X-Usuario-Id", "42")
                         .content(json))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.usuarioId").value(1))
+                .andExpect(jsonPath("$.usuarioId").value(42))
+                .andExpect(jsonPath("$.numeroPedido").value("GM-test"))
                 .andExpect(jsonPath("$.estado").value("PENDIENTE"))
-                .andExpect(jsonPath("$.direccionEntrega").value("Av. Siempreviva 742, Springfield"))
+                .andExpect(jsonPath("$.tipoComprobante").value("boleta"))
+                .andExpect(jsonPath("$.total").value(159980.00))
+                .andExpect(jsonPath("$.items[0].id").value("fc-27-ps5"))
+                .andExpect(jsonPath("$.items[0].nombre").value("FC 2027 PS5"))
+                .andExpect(jsonPath("$.items[0].cantidad").value(2))
                 .andExpect(jsonPath("$._links.todos.href").exists())
                 .andExpect(jsonPath("$._links.update.href").exists())
                 .andExpect(jsonPath("$._links.delete.href").exists());
 
-        verify(service).save(any(Pedido.class));
+        verify(service).crearPedido(eq(42L), any(CrearPedidoRequest.class));
     }
 
     @Test
     void deberiaRetornar400CuandoFaltanCamposObligatorios() throws Exception {
         String json = """
                 {
-                    "usuarioId": 1
+                    "clienteNombre": "Cliente Gmoon",
+                    "email": "cliente@example.com",
+                    "tipoComprobante": "boleta",
+                    "items": [
+                        {
+                            "id": "fc-27-ps5",
+                            "nombre": "FC 2027 PS5",
+                            "cantidad": 0,
+                            "precioUnitario": 79990
+                        }
+                    ]
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/pedidos")
+        mockMvc.perform(post("/api/v1/boletas")
                         .contentType("application/json")
+                        .header("X-Usuario-Id", "42")
                         .content(json))
                 .andExpect(status().isBadRequest());
     }
