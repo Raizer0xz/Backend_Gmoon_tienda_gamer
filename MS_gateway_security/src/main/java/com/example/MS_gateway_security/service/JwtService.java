@@ -18,7 +18,7 @@ import java.util.Date;
  * El token contiene:
  *   sub       → email del usuario
  *   usuarioId → ID en ms-usuarios
- *   rol       → CLIENTE | REPARTIDOR | ADMIN_SUCURSAL
+ *   rol       → CLIENTE | VENDEDOR | ADMIN
  *   iat       → fecha de emision
  *   exp       → expira en 24h por defecto
  */

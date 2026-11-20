@@ -22,6 +22,6 @@ public class PrivilegedRegisterRequest {
     private String password;
 
     @NotBlank(message = "El rol es obligatorio")
-    @Pattern(regexp = "^(VENDEDOR|ADMIN)$", message = "El rol debe ser VENDEDOR o ADMIN")
+    @Pattern(regexp = "(?i)^(VENDEDOR|ADMIN)$", message = "El rol debe ser VENDEDOR o ADMIN")
     private String rol;
 }

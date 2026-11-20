@@ -1,9 +1,11 @@
 package com.example.MS_gateway_security.service;
 
+import com.example.MS_gateway_security.client.UsuarioClient;
 import com.example.MS_gateway_security.dto.AuthResponse;
 import com.example.MS_gateway_security.dto.LoginRequest;
 import com.example.MS_gateway_security.dto.PrivilegedRegisterRequest;
 import com.example.MS_gateway_security.dto.RegisterRequest;
+import com.example.MS_gateway_security.dto.UsuarioPerfilResponse;
 import com.example.MS_gateway_security.dto.ValidarTokenResponse;
 import com.example.MS_gateway_security.model.Credencial;
 import com.example.MS_gateway_security.repository.CredencialRepository;
@@ -34,6 +36,9 @@ class AuthServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private UsuarioClient usuarioClient;
 
     @InjectMocks
     private AuthService authService;
@@ -70,6 +75,8 @@ class AuthServiceTest {
     void registrar_deberiaCrearCredencialesYRetornarJwt() {
         when(credencialRepository.existsByEmail("juan@mail.com")).thenReturn(false);
         when(credencialRepository.existsByUsuarioId(10L)).thenReturn(false);
+        when(usuarioClient.buscarPorId(10L))
+                .thenReturn(new UsuarioPerfilResponse(10L, "juan@mail.com", "CLIENTE"));
         when(passwordEncoder.encode("segura123")).thenReturn("$2a$10$hasheado");
         when(credencialRepository.save(any(Credencial.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -87,6 +94,7 @@ class AuthServiceTest {
 
         verify(credencialRepository).existsByEmail("juan@mail.com");
         verify(credencialRepository).existsByUsuarioId(10L);
+        verify(usuarioClient).buscarPorId(10L);
         verify(credencialRepository).save(any(Credencial.class));
         verify(jwtService).generarToken("juan@mail.com", 10L, "CLIENTE");
     }
@@ -117,6 +125,36 @@ class AuthServiceTest {
     }
 
     @Test
+    void registrar_deberiaRechazarCorreoQueNoCoincideConElPerfil() {
+        when(credencialRepository.existsByEmail("juan@mail.com")).thenReturn(false);
+        when(credencialRepository.existsByUsuarioId(10L)).thenReturn(false);
+        when(usuarioClient.buscarPorId(10L))
+                .thenReturn(new UsuarioPerfilResponse(10L, "otro@mail.com", "CLIENTE"));
+
+        assertThatThrownBy(() -> authService.registrar(registerRequest))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("El correo no coincide con el perfil del usuario");
+
+        verify(passwordEncoder, never()).encode(anyString());
+        verify(credencialRepository, never()).save(any());
+    }
+
+    @Test
+    void registrar_deberiaRechazarPerfilConRolPrivilegiado() {
+        when(credencialRepository.existsByEmail("juan@mail.com")).thenReturn(false);
+        when(credencialRepository.existsByUsuarioId(10L)).thenReturn(false);
+        when(usuarioClient.buscarPorId(10L))
+                .thenReturn(new UsuarioPerfilResponse(10L, "juan@mail.com", "VENDEDOR"));
+
+        assertThatThrownBy(() -> authService.registrar(registerRequest))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("El rol no coincide con el perfil del usuario");
+
+        verify(passwordEncoder, never()).encode(anyString());
+        verify(credencialRepository, never()).save(any());
+    }
+
+    @Test
     void registrarPrivilegiado_deberiaCrearCredencialesConRolSolicitado() {
         PrivilegedRegisterRequest request = new PrivilegedRegisterRequest();
         request.setUsuarioId(10L);
@@ -125,6 +163,8 @@ class AuthServiceTest {
         request.setRol("VENDEDOR");
         when(credencialRepository.existsByEmail("vendedor@mail.com")).thenReturn(false);
         when(credencialRepository.existsByUsuarioId(10L)).thenReturn(false);
+        when(usuarioClient.buscarPorId(10L))
+                .thenReturn(new UsuarioPerfilResponse(10L, "vendedor@mail.com", "VENDEDOR"));
         when(passwordEncoder.encode("segura123")).thenReturn("$2a$10$hasheado");
         when(credencialRepository.save(any(Credencial.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -134,6 +174,7 @@ class AuthServiceTest {
         AuthResponse response = authService.registrarPrivilegiado(request);
 
         assertThat(response.getRol()).isEqualTo("VENDEDOR");
+        verify(usuarioClient).buscarPorId(10L);
         verify(credencialRepository).save(argThat(saved -> "VENDEDOR".equals(saved.getRol())));
     }
 

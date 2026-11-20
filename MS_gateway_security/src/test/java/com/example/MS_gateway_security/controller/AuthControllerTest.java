@@ -92,6 +92,42 @@ class AuthControllerTest {
         verify(authService).registrar(any());
     }
 
+    @Test
+    void deberiaRetornar400CuandoElPerfilNoCoincide() throws Exception {
+        when(authService.registrar(any()))
+                .thenThrow(new IllegalArgumentException("El correo no coincide con el perfil del usuario"));
+
+        mockMvc.perform(post("/auth/registrar")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                    "usuarioId": 1,
+                                    "email": "juan@mail.com",
+                                    "password": "segura123"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("El correo no coincide con el perfil del usuario"));
+    }
+
+    @Test
+    void deberiaRetornar503CuandoNoPuedeConsultarMsUsuarios() throws Exception {
+        when(authService.registrar(any()))
+                .thenThrow(new IllegalStateException("MS-usuarios no disponible"));
+
+        mockMvc.perform(post("/auth/registrar")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                    "usuarioId": 1,
+                                    "email": "juan@mail.com",
+                                    "password": "segura123"
+                                }
+                                """))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("No se pudo validar el perfil en MS-usuarios"));
+    }
+
     // -------------------------------------------------------------------------
     // POST /auth/registrar → 400 datos inválidos
     // -------------------------------------------------------------------------

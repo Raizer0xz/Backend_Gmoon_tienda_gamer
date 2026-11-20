@@ -2,6 +2,7 @@ package com.example.MS_gateway_security.controller;
 
 import com.example.MS_gateway_security.dto.*;
 import com.example.MS_gateway_security.service.AuthService;
+import feign.FeignException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -40,14 +41,14 @@ public class AuthController {
     // -------------------------------------------------------------------------
     @Operation(
             summary = "Registrar credenciales",
-            description = "Crea las credenciales (email + password) para un usuario ya existente en MS-USUARIOS. " +
-                    "El usuarioId debe existir previamente en MS-usuarios. El rol siempre será CLIENTE."
+            description = "Crea credenciales CLIENTE solo si el ID, correo y rol coinciden con un perfil existente en MS-USUARIOS."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Credenciales creadas y JWT generado",
                     content = @Content(schema = @Schema(implementation = AuthResponse.class))),
             @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos (validación fallida)",
                     content = @Content(schema = @Schema(example = "{\"error\": \"El email es obligatorio\"}"))),
+            @ApiResponse(responseCode = "503", description = "No se pudo validar el perfil en MS-USUARIOS"),
             @ApiResponse(responseCode = "409", description = "Ya existe cuenta con ese email o usuarioId",
                     content = @Content(schema = @Schema(example = "{\"error\": \"Ya existe una cuenta con ese email\"}")))
     })
@@ -58,6 +59,12 @@ public class AuthController {
             AuthResponse response = authService.registrar(request);
             log.info("Credenciales creadas para usuarioId: {}", request.getUsuarioId());
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (FeignException | IllegalStateException e) {
+            log.error("No se pudo validar el perfil para usuarioId: {}", request.getUsuarioId(), e);
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "No se pudo validar el perfil en MS-usuarios"));
         } catch (RuntimeException e) {
             log.warn("Conflicto al registrar: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
@@ -75,6 +82,7 @@ public class AuthController {
             @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos"),
             @ApiResponse(responseCode = "401", description = "Token ausente o inválido"),
             @ApiResponse(responseCode = "403", description = "Solo ADMIN puede crear roles privilegiados"),
+            @ApiResponse(responseCode = "503", description = "No se pudo validar el perfil en MS-USUARIOS"),
             @ApiResponse(responseCode = "409", description = "Ya existe cuenta con ese email o usuarioId")
     })
     @PostMapping("/registrar-privilegiado")
@@ -102,6 +110,10 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (FeignException | IllegalStateException e) {
+            log.error("No se pudo validar el perfil para usuarioId: {}", request.getUsuarioId(), e);
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "No se pudo validar el perfil en MS-usuarios"));
         } catch (RuntimeException e) {
             log.warn("Conflicto al registrar credenciales privilegiadas: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));

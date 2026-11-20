@@ -16,9 +16,9 @@ public class OpenApiConfig {
         final String securitySchemeName = "bearerAuth";
         return new OpenAPI()
                 .info(new Info()
-                        .title("Market Express - API Seguridad (Auth)")
+                        .title("Gmoon - API de autenticación y seguridad")
                         .version("1.0")
-                        .description("Microservicio de autenticacion y seguridad JWT")
+                        .description("Registro de credenciales, inicio de sesión y emisión/validación de JWT para Gmoon.")
                         .contact(new Contact()
                                 .name("Bastian, Omar, Eduardo")
                                 .email("b.floresseron2005@gmail.com")))
