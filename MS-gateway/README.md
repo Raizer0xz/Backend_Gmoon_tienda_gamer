@@ -23,7 +23,7 @@ Las solicitudes con JWT válido reciben `X-Usuario-Id`, `X-Usuario-Email` y `X-U
 - Gateway: `http://localhost:5050`
 - Frontend React: `http://localhost:5173` (origen CORS configurado)
 - Configurar `JWT_SECRET` con la misma clave segura que usa `MS_gateway_security`; no guardar claves reales en el repositorio.
-- Para el frontend, reservar `VITE_API_URL` para este gateway. El servicio Express de correos debe usar una variable separada, por ejemplo `VITE_EMAIL_URL`.
+- El frontend apunta a este servicio mediante `VITE_GATEWAY_URL`. `VITE_API_URL` se conserva para el servicio local de correo.
 
 Ejecutar pruebas:
 

@@ -8,6 +8,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -59,6 +60,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("status", 400, "error", mensaje));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleDependencyException(ResponseStatusException ex) {
+        int status = ex.getStatusCode().value();
+        String mensaje = ex.getReason() == null ? "No se pudo completar la solicitud" : ex.getReason();
+        log.error("Error al consultar el catálogo desde MS-pedidos: {}", mensaje);
+        return ResponseEntity.status(status)
+                .body(Map.of("status", status, "error", mensaje));
     }
 
     /**

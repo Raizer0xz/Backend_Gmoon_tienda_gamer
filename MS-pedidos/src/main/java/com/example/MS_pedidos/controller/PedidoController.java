@@ -123,12 +123,14 @@ public class PedidoController {
     // POST /api/v1/boletas (also available under the legacy pedidos alias)
     // -------------------------------------------------------------------------
     @Operation(summary = "Registrar una compra",
-            description = "Registra el detalle y el comprobante. El usuario se obtiene del JWT validado por el gateway y el total se calcula desde las líneas.")
+            description = "Valida precio y disponibilidad contra MS-productos; registra el detalle y el comprobante. " +
+                    "El usuario se obtiene del JWT validado por el gateway y el total se calcula con el precio vigente.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Pedido creado exitosamente",
                     content = @Content(schema = @Schema(implementation = Pedido.class))),
             @ApiResponse(responseCode = "400", description = "Datos del pedido inválidos",
-                    content = @Content(schema = @Schema(example = "{\"error\": \"Validacion fallida\"}")))
+                    content = @Content(schema = @Schema(example = "{\"error\": \"Validacion fallida\"}"))),
+            @ApiResponse(responseCode = "503", description = "El catálogo de productos no está disponible")
     })
     @PostMapping
     public ResponseEntity<Pedido> save(

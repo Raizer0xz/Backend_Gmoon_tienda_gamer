@@ -6,6 +6,8 @@ Microservicio de compras y comprobantes del catálogo Gmoon. La ruta principal d
 
 El gateway valida el JWT y entrega `X-Usuario-Id` al microservicio. El identificador del comprador se toma de ese encabezado, no del JSON enviado por el cliente. La boleta parte en estado `PENDIENTE` y su total se calcula sumando cantidad por precio unitario.
 
+Antes de guardar la boleta, `MS-pedidos` consulta `MS-productos` por Eureka. El `id` de cada línea debe ser el ID numérico del catálogo. Se verifican el estado activo del producto y su categoría, la disponibilidad de stock y que el precio enviado coincida con el precio actual, incluido el descuento. El nombre y precio que se guardan se toman del catálogo, y un fallo de `MS-productos` responde `503`.
+
 ```json
 {
   "clienteNombre": "Cliente Gmoon",
@@ -13,7 +15,7 @@ El gateway valida el JWT y entrega `X-Usuario-Id` al microservicio. El identific
   "tipoComprobante": "boleta",
   "items": [
     {
-      "id": "fc-27-ps5",
+      "id": "42",
       "nombre": "FC 2027 PS5",
       "cantidad": 2,
       "precioUnitario": 79990
@@ -24,9 +26,9 @@ El gateway valida el JWT y entrega `X-Usuario-Id` al microservicio. El identific
 
 La respuesta incluye `numeroPedido`, `usuarioId`, `tipoComprobante`, `total`, estado y las líneas guardadas. Se aceptan `boleta` y `factura` sin distinguir mayúsculas.
 
-El checkout actual es una simulación y todavía obtiene el catálogo/carrito del navegador. Por eso este servicio conserva los precios unitarios como snapshot recibido y calcula el total desde esas líneas; validar el precio contra el catálogo debe hacerse cuando el frontend use el catálogo backend. No se procesa ningún pago real.
+El frontend React usa Axios para llamar a este endpoint a través del gateway. Si el catálogo cambia entre la carga del carrito y la compra, la solicitud se rechaza para que el cliente actualice el precio antes de confirmar.
 
-El frontend todavía usa autenticación local y no llama a este endpoint. Para conectarlo, primero debe enviar el JWT que emite `MS-seguridad` a través del gateway; el gateway exige ese token para registrar y consultar compras.
+El checkout sigue siendo una simulación: no procesa pagos reales. La boleta queda `PENDIENTE` y la comprobación de stock no lo descuenta ni crea una reserva. Una futura integración de pagos debe definir la reserva y liberación del inventario al cancelar o fallar una compra.
 
 ## Consultas y compatibilidad
 
@@ -34,7 +36,7 @@ El frontend todavía usa autenticación local y no llama a este endpoint. Para c
 - Las rutas equivalentes bajo `/api/v1/pedidos` se mantienen por compatibilidad.
 - Los campos heredados de sucursal y dirección quedan opcionales para conservar registros anteriores; el checkout Gmoon no los requiere.
 
-El gateway limita el acceso a las compras mediante JWT y permisos por rol.
+El gateway limita el acceso a las compras mediante JWT y permisos por rol: clientes registran compras y consultan solo sus boletas; vendedores pueden consultar; administradores tienen acceso de gestión.
 
 ## Base de datos y pruebas
 
