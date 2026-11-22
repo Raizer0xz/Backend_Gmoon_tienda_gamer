@@ -1,0 +1,292 @@
+GMOON - ENLACES SWAGGER, POSTMAN Y AUTENTICACION
+================================================
+
+REQUISITOS
+----------
+Levantar primero MySQL y luego Eureka, Seguridad, Usuarios, Productos,
+Pedidos y Gateway. Abrir el frontend con http://localhost:5173.
+
+No guardes JWT, contrasenas ni secretos dentro de este archivo o en Git.
+
+
+ORDEN LOCAL DE LOS SERVICIOS
+-----------------------------
+Eureka:      http://localhost:8761
+Gateway:     http://localhost:5050
+Seguridad:   http://localhost:8082
+Usuarios:    http://localhost:8084
+Productos:   http://localhost:8085
+Pedidos:     http://localhost:8088
+Frontend:    http://localhost:5173
+
+
+SWAGGER DIRECTO POR MICROSERVICIO
+---------------------------------
+Seguridad:
+  http://localhost:8082/swagger-ui.html
+  http://localhost:8082/v3/api-docs
+
+Usuarios:
+  http://localhost:8084/swagger-ui.html
+  http://localhost:8084/v3/api-docs
+
+Productos:
+  http://localhost:8085/swagger-ui.html
+  http://localhost:8085/v3/api-docs
+
+Pedidos/Boletas:
+  http://localhost:8088/swagger-ui.html
+  http://localhost:8088/v3/api-docs
+
+
+SWAGGER JSON ATRAVES DEL GATEWAY
+--------------------------------
+Seguridad:  http://localhost:5050/docs/seguridad/v3/api-docs
+Usuarios:   http://localhost:5050/docs/usuarios/v3/api-docs
+Productos:  http://localhost:5050/docs/productos/v3/api-docs
+Pedidos:    http://localhost:5050/docs/pedidos/v3/api-docs
+
+La ruta /docs/... devuelve OpenAPI JSON. No existe una Swagger UI unica
+central configurada en este proyecto; usa las URLs de Swagger UI directas
+o abre el JSON desde el gateway.
+
+
+RUTAS PRINCIPALES EN POSTMAN
+----------------------------
+Usa http://localhost:5050 como base para todas las solicitudes.
+
+SALUD
+GET  /auth/health
+GET  /api/v1/usuarios/health
+GET  /api/v1/productos/health
+GET  /api/v1/categorias/health
+GET  /api/v1/boletas/health
+
+AUTENTICACION
+POST /auth/registrar
+POST /auth/login
+POST /auth/refresh
+POST /auth/logout
+POST /auth/validar
+POST /auth/registrar-cliente
+POST /auth/registrar-privilegiado
+
+USUARIOS
+POST   /api/v1/usuarios
+GET    /api/v1/usuarios
+GET    /api/v1/usuarios/{id}
+GET    /api/v1/usuarios/email/{email}
+GET    /api/v1/usuarios/rol/{rol}
+PUT    /api/v1/usuarios/{id}
+DELETE /api/v1/usuarios/{id}
+
+PRODUCTOS
+GET    /api/v1/productos
+GET    /api/v1/productos/{id}
+GET    /api/v1/productos/categoria/{categoriaId}
+GET    /api/v1/productos/buscar?nombre=...
+POST   /api/v1/productos
+PUT    /api/v1/productos/{id}
+DELETE /api/v1/productos/{id}
+
+CATEGORIAS
+GET    /api/v1/categorias
+GET    /api/v1/categorias/{id}
+POST   /api/v1/categorias
+PUT    /api/v1/categorias/{id}
+DELETE /api/v1/categorias/{id}
+
+BOLETAS
+POST   /api/v1/boletas
+GET    /api/v1/boletas
+GET    /api/v1/boletas/{id}
+GET    /api/v1/boletas/usuario/{usuarioId}
+GET    /api/v1/boletas/sucursal/{sucursalId}
+PUT    /api/v1/boletas/{id}/estado
+DELETE /api/v1/boletas/{id}
+
+Alias legado:
+/api/v1/pedidos y /api/v1/pedidos/** siguen encaminando al microservicio
+de pedidos. El contrato recomendado para Gmoon es /api/v1/boletas.
+
+
+AUTENTICACION EN POSTMAN
+------------------------
+1. Crea una nueva solicitud POST:
+   http://localhost:5050/auth/login
+
+2. En Headers:
+   Content-Type: application/json
+
+3. En Body > raw > JSON, reemplaza los datos con una cuenta real:
+   {
+     "email": "correo@ejemplo.com",
+     "password": "tu-password"
+   }
+
+4. Pulsa Send.
+
+5. La respuesta devuelve un campo llamado "token", por ejemplo:
+   {
+     "token": "eyJ...",
+     "usuarioId": 12,
+     "email": "correo@ejemplo.com",
+     "rol": "CLIENTE"
+   }
+
+6. Copia solo el valor de "token", sin escribir la palabra Bearer.
+
+7. En las solicitudes protegidas abre Authorization y selecciona:
+   Auth Type: Bearer Token
+   Token: pega el valor copiado
+
+   Tambien puedes usar la pestana Headers:
+   Authorization: Bearer eyJ...
+
+No pongas el JWT en el body ni como parametro de URL.
+
+
+RENOVACION Y COOKIE EN POSTMAN
+------------------------------
+El login envia una cookie HttpOnly llamada gmoon_refresh.
+Postman debe conservar las cookies del dominio localhost.
+
+Para renovar:
+1. Solicitud POST: http://localhost:5050/auth/refresh
+2. No agregues Authorization ni body.
+3. Enviar sin enviar manualmente el refresh token.
+
+Si Postman no envia la cookie, abre Cookies en la parte superior o
+administracion de Cookies y verifica que localhost tenga gmoon_refresh.
+
+La respuesta de refresh contiene un nuevo token de acceso. Debes actualizar
+el token Bearer usado en las siguientes solicitudes.
+
+Para cerrar sesion:
+POST http://localhost:5050/auth/logout
+Sin Authorization. El backend revoca el refresh token y elimina la cookie.
+
+
+VARIABLES RECOMENDADAS EN POSTMAN
+---------------------------------
+Crea un Environment con:
+
+base_url = http://localhost:5050
+access_token = valor temporal obtenido de /auth/login o /auth/refresh
+
+Usa en las solicitudes:
+{{base_url}}/api/v1/productos
+
+Authorization = Bearer {{access_token}}
+
+No compartas el Environment si contiene un token real. No incluyas
+passwords ni JWT en capturas de entrega.
+
+
+ROLES Y PERMISOS ESPERADOS
+--------------------------
+PUBLICO:
+- Login, refresh, logout, registro publico y consulta de productos/categorias.
+
+CLIENTE:
+- Crear boletas.
+- Consultar solo sus propias boletas.
+- Consultar catalogo.
+- Abrir /mis-compras en el frontend.
+
+VENDEDOR:
+- Consultar catalogo y boletas.
+- No crear boletas ni administrar usuarios/catalogo.
+- Abrir /vendedor en el frontend.
+
+ADMIN:
+- Administrar productos, categorias y usuarios.
+- Consultar boletas.
+- Crear cuentas CLIENTE y VENDEDOR.
+- Abrir /admin en el frontend.
+
+El Gateway vuelve a verificar JWT y rol. Una opcion oculta en el frontend
+no reemplaza la autorizacion del servidor.
+
+
+EJEMPLO LOGIN
+-------------
+POST {{base_url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "cliente@ejemplo.com",
+  "password": "password-real"
+}
+
+
+EJEMPLO PRODUCTO ADMIN
+----------------------
+POST {{base_url}}/api/v1/productos
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "nombre": "Producto demo",
+  "descripcion": "Creado desde Postman",
+  "precio": 1000,
+  "stock": 10,
+  "descuento": 10,
+  "estado": true,
+  "categoriaId": 1
+}
+
+Los nombres exactos de campos pueden variar segun el DTO vigente.
+Consulta el Swagger directo de MS-PRODUCTOS para el contrato actualizado.
+
+
+EJEMPLO BOLETA
+--------------
+POST {{base_url}}/api/v1/boletas
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "clienteNombre": "Cliente Gmoon",
+  "email": "cliente@ejemplo.com",
+  "tipoComprobante": "BOLETA",
+  "items": [
+    {
+      "id": "42",
+      "nombre": "Nombre existente en el catalogo",
+      "cantidad": 1,
+      "precioUnitario": 1000
+    }
+  ]
+}
+
+El backend vuelve a consultar el catalogo y recalcula precio, stock y total.
+El frontend/cliente no debe confiar en el precio enviado.
+La compra actual es una simulacion: no cobra ni descuenta stock.
+
+
+COMPROBACION RAPIDA DE LA AUTORIZACION
+--------------------------------------
+Sin token:
+- Solicitud protegida: debe responder 401.
+
+Token CLIENTE consultando otra boleta/usuario:
+- Debe responder 403.
+
+Token VENDEDOR intentando crear boleta:
+- Debe responder 403.
+
+Token ADMIN creando/modificando productos:
+- Debe responder 200/201 segun la operacion.
+
+
+DOCUMENTACION ADICIONAL
+-----------------------
+Backend:
+  docs/GUIA_ESTUDIO_GMOON_PUNTOS_1_A_6.md
+  docs/ENLACES_POSTMAN_SWAGGER_GMOON.txt
+  MS_gateway_security/README.md
+
+Frontend:
+  frontend/README.md
+  frontend/TESTING.md

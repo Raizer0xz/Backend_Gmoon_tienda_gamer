@@ -99,6 +99,18 @@ class JwtAuthFilterTest {
     }
 
     @Test
+    void allowsRefreshAndLogoutRequestsWithoutAccessJwt() {
+        MockServerWebExchange refresh = exchange(HttpMethod.POST, "/auth/refresh", null);
+        MockServerWebExchange logout = exchange(HttpMethod.POST, "/auth/logout", null);
+
+        filter.apply(new JwtAuthFilter.Config()).filter(refresh, request -> Mono.empty()).block();
+        filter.apply(new JwtAuthFilter.Config()).filter(logout, request -> Mono.empty()).block();
+
+        assertThat(refresh.getResponse().getStatusCode()).isNull();
+        assertThat(logout.getResponse().getStatusCode()).isNull();
+    }
+
+    @Test
     void deniesUnauthenticatedPrivilegedRegistration() {
         MockServerWebExchange exchange = exchange(HttpMethod.POST, "/auth/registrar-privilegiado", null);
 
@@ -125,6 +137,20 @@ class JwtAuthFilterTest {
         filter.apply(new JwtAuthFilter.Config()).filter(exchange, request -> Mono.empty()).block();
 
         assertThat(exchange.getResponse().getStatusCode()).isNull();
+    }
+
+    @Test
+    void onlyAdminCanCreateClientCredentialsFromAdminPanel() {
+        MockServerWebExchange admin = exchange(
+                HttpMethod.POST, "/auth/registrar-cliente", token(7L, "ADMIN"));
+        MockServerWebExchange client = exchange(
+                HttpMethod.POST, "/auth/registrar-cliente", token(8L, "CLIENTE"));
+
+        filter.apply(new JwtAuthFilter.Config()).filter(admin, request -> Mono.empty()).block();
+        filter.apply(new JwtAuthFilter.Config()).filter(client, request -> Mono.empty()).block();
+
+        assertThat(admin.getResponse().getStatusCode()).isNull();
+        assertThat(client.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test

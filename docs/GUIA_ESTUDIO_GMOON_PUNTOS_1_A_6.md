@@ -2,7 +2,7 @@
 
 Este documento describe la arquitectura y el trabajo realizado para adaptar los microservicios existentes a Gmoon, conectar el frontend React mediante Axios y validar el flujo de compra. Está escrito para estudiar y explicar el proyecto; no reemplaza la pauta oficial del curso.
 
-> **Estado importante:** la compra está integrada como simulación, no procesa pagos y no reserva ni descuenta inventario. Además, el bootstrap de las credenciales del primer ADMIN todavía requiere una decisión/provisión controlada. No se deben agregar contraseñas ni secretos reales al repositorio.
+> **Estado importante:** la compra está integrada como simulación, no procesa pagos y no reserva ni descuenta inventario. La renovación de sesión y el mecanismo opt-in de bootstrap ADMIN ya están implementados. El bootstrap sigue desactivado por defecto y no se han validado credenciales ADMIN reales en esta preparación. No se deben agregar contraseñas ni secretos al repositorio.
 
 ## 1. ¿Qué hace Gmoon y cuál es el alcance?
 
@@ -52,7 +52,8 @@ La configuración local de MySQL usa `db_seguridad`, `db_usuarios` y `db_pedidos
 ### Conceptos útiles para explicar
 
 - **REST:** los recursos se consultan o modifican con métodos HTTP como GET, POST, PUT y DELETE.
-- **JWT:** token firmado que identifica al usuario y su rol. El frontend lo adjunta como `Authorization: Bearer ...`; no es una contraseña.
+- **JWT:** token de acceso firmado que identifica al usuario y su rol. El frontend lo mantiene en memoria y lo adjunta como `Authorization: Bearer ...`; no es una contraseña.
+- **Refresh token:** credencial opaca de renovación, almacenada como hash en Seguridad y transportada en una cookie `HttpOnly`; el navegador no puede leerla desde JavaScript.
 - **BCrypt:** función de hash usada para guardar contraseñas sin almacenarlas en texto plano.
 - **Eureka:** registro que evita fijar la dirección de cada servicio en cada consumidor.
 - **Gateway:** punto de entrada que reúne rutas y reglas de acceso.
@@ -85,17 +86,20 @@ El frontend local permitido por CORS es `http://localhost:5173`. En esta configu
 
 ### MS-seguridad
 
-Separa credenciales de perfiles. Guarda el hash BCrypt, verifica las credenciales del login y emite JWT con identidad y rol. Antes de registrar credenciales comprueba mediante Eureka que el perfil exista y que coincidan usuario, correo y rol. Un perfil inválido se rechaza; si Usuarios no está disponible, se informa el fallo de dependencia.
+Separa credenciales de perfiles. Guarda las contraseñas con BCrypt y los refresh tokens como hashes; verifica el login y emite un JWT de acceso de 15 minutos. El refresh token dura 7 días, rota al renovar y puede revocarse al cerrar sesión. Antes de registrar credenciales comprueba mediante Eureka que el perfil exista y que coincidan usuario, correo y rol. Un perfil inválido se rechaza; si Usuarios no está disponible, se informa el fallo de dependencia.
 
 Rutas principales:
 
 - `POST /auth/registrar`: credenciales de un CLIENTE cuyo perfil ya existe.
 - `POST /auth/login`: valida email y contraseña y devuelve el JWT.
+- `POST /auth/refresh`: rota la cookie HttpOnly y devuelve un JWT de acceso nuevo.
+- `POST /auth/logout`: revoca el refresh token y elimina la cookie.
 - `POST /auth/validar`: verifica el token; lo usan componentes internos.
+- `POST /auth/registrar-cliente`: crea credenciales de CLIENTE desde administración, sin reemplazar la sesión ADMIN.
 - `POST /auth/registrar-privilegiado`: registro de ADMIN/VENDEDOR, protegido para ADMIN.
 - `GET /auth/health`: estado del servicio.
 
-**Bootstrap pendiente:** Seguridad no crea un ADMIN por defecto. En la base local inspeccionada no hay credenciales ADMIN activas. La creación del primer ADMIN debe hacerse mediante un procedimiento autorizado y controlado; no debe resolverse agregando una contraseña fija a código, migraciones o documentación.
+**Bootstrap ADMIN:** Seguridad no crea una cuenta ADMIN por defecto. El runner opt-in `AdminBootstrapRunner` permite crearla una sola vez cuando ya existe un perfil ADMIN válido en Usuarios; comprueba ID, correo y rol y se niega a continuar si detecta un ADMIN activo. Debe habilitarse solo durante una ejecución controlada, mediante variables de entorno temporales, y deshabilitarse después. El mecanismo está implementado, pero la existencia de credenciales ADMIN válidas para la demostración aún debe comprobarse en el entorno de ejecución.
 
 ### MS-usuarios
 
@@ -135,19 +139,19 @@ La seguridad protege las rutas del Gateway y establece el límite de confianza e
 
 ### Punto 3 — Integrar React con Axios
 
-El frontend utiliza un cliente Axios configurado con `VITE_GATEWAY_URL` (por defecto `http://localhost:5050`). Las funciones de API agrupan auth, catálogo, boletas y usuarios; el token se adjunta a las rutas protegidas.
+El frontend utiliza un cliente Axios configurado con `VITE_GATEWAY_URL` (por defecto `http://localhost:5050`). Las funciones de API agrupan autenticación, catálogo, boletas, usuarios y administración. El JWT de acceso se mantiene en memoria; una cookie HttpOnly permite restaurar/renovar la sesión al recargar o al expirar el token. Axios comparte solicitudes de renovación simultáneas y reintenta una petición protegida una vez.
 
-El flujo de registro crea perfil y credenciales. Si la segunda operación falla, la interfaz informa el error y no finge que el registro terminó por completo; el perfil ya creado puede requerir atención. El catálogo adapta la respuesta HAL. Checkout envía los IDs del catálogo y conserva el carrito si el backend rechaza la operación. El total y el número de boleta se toman de la respuesta del backend.
+El flujo de registro crea perfil y credenciales. Si la segunda operación falla, la interfaz informa el error y no finge que el registro terminó por completo; el perfil ya creado puede requerir atención. El catálogo adapta la respuesta HAL. Checkout envía los IDs del catálogo y conserva el carrito si el backend rechaza la operación. El total y el número de boleta se toman de la respuesta del backend. Las rutas `/admin`, `/vendedor` y `/mis-compras` tienen guards por rol.
 
-No todo el panel está conectado: gestión de usuarios usa el backend, mientras que CRUD de productos/categorías e historial administrativo siguen siendo locales.
+El panel ADMIN administra productos y categorías y consulta boletas desde el backend; también puede crear cuentas CLIENTE y VENDEDOR sin cerrar la sesión administrativa. El panel VENDEDOR consulta catálogo y boletas, y CLIENTE consulta sus propias boletas. Los permisos se vuelven a verificar en el Gateway; ocultar una opción en la interfaz no sustituye la autorización del servidor.
 
 ### Punto 4 — Validar el sistema integrado
 
-Se levantaron MySQL, Eureka, Gateway y los cinco microservicios; se comprobó su registro y el recorrido desde React, pasando por Axios y Gateway, hasta Pedidos y Productos. La prueba usó `localhost`, que coincide con el origen CORS configurado.
+En una validación integrada anterior se levantaron MySQL, Eureka, Gateway y los microservicios; se comprobó su registro y el recorrido desde React, pasando por Axios y Gateway, hasta Pedidos y Productos. La prueba usó `localhost`, que coincide con el origen CORS configurado.
 
 En una compra de prueba se usó un producto temporal de $1.000 con 10% de descuento y cantidad 2. El backend calculó $900 por unidad y una boleta de $1.800. Se comprobó que un precio manipulado y una cantidad superior al stock fueran rechazados con 400.
 
-También se verificaron permisos: un cliente pudo consultar sus boletas (200) y recibió 403 al consultar las de otra persona o la lista de usuarios; un vendedor pudo consultar boletas (200) y recibió 403 al intentar crear una; sin token se recibió 401. Al terminar se eliminaron la cuenta, credenciales, boleta, detalle y producto temporales. Las consultas de verificación confirmaron cero filas de esos datos de QA.
+También se verificaron permisos: un cliente pudo consultar sus boletas (200) y recibió 403 al consultar las de otra persona o la lista de usuarios; un vendedor pudo consultar boletas (200) y recibió 403 al intentar crear una; sin token se recibió 401. Al terminar se eliminaron la cuenta, credenciales, boleta, detalle y producto temporales. Las consultas de verificación confirmaron cero filas de esos datos de QA. Esta prueba ocurrió antes de los cambios EP3 de renovación de sesión y vistas por rol; en la validación actual los servicios no están levantados, así que esos cambios todavía requieren una demostración integrada.
 
 ### Punto 5 — Documentar y entregar
 
@@ -178,7 +182,9 @@ Los Swagger UI individuales se pueden abrir directamente en el puerto local de c
 4. Restringir operaciones según rol y propiedad de la boleta.
 5. Registrar una boleta con líneas, comprobando existencia, estado, stock y precio vigente del catálogo.
 6. Calcular el total en el backend y devolver el resultado al frontend.
-7. Mantener el contrato de boletas alineado con `boleta`/`detalle_boleta` y conservar rutas antiguas compatibles.
+7. Administrar productos, categorías y cuentas según el rol; limitar a cada CLIENTE el acceso a sus propias boletas.
+8. Renovar y revocar sesiones con refresh tokens rotatorios, sin persistir el JWT de acceso en localStorage.
+9. Mantener el contrato de boletas alineado con `boleta`/`detalle_boleta` y conservar rutas antiguas compatibles.
 
 ### Requisitos no funcionales y límites
 
@@ -186,7 +192,7 @@ Los Swagger UI individuales se pueden abrir directamente en el puerto local de c
 - Las rutas entre servicios se descubren con Eureka y la consulta del catálogo desde Pedidos usa Feign.
 - Los errores de autenticación/permisos distinguen 401 y 403; si el catálogo no está disponible durante el checkout, se informa indisponibilidad (503).
 - El checkout no cobra dinero ni reserva stock.
-- El bootstrap de ADMIN sigue pendiente y debe realizarse de manera segura antes de habilitar administración en un entorno nuevo.
+- El bootstrap de ADMIN está implementado como proceso opt-in, pero debe ejecutarse y verificarse de forma segura antes de habilitar administración en un entorno nuevo.
 - No existe una transacción distribuida entre la creación de perfil y credenciales; un fallo en la segunda operación puede dejar un perfil sin credenciales.
 
 ## 6. Guía de uso y prueba local
@@ -226,7 +232,7 @@ npm run dev
 
 1. Abrir la tienda y cargar productos/categorías.
 2. Registrarse. El sistema crea un perfil CLIENTE y luego sus credenciales.
-3. Iniciar sesión con email y contraseña; el frontend guarda el JWT de sesión y lo adjunta a llamadas protegidas.
+3. Iniciar sesión con email y contraseña; el JWT vive en memoria y se adjunta a llamadas protegidas. Al recargar, el frontend intenta restaurar la sesión con la cookie HttpOnly.
 4. Agregar productos al carrito y confirmar la compra.
 5. Si el catálogo cambió, no hay stock suficiente o falla un servicio, leer el error y volver a actualizar/reintentar. El carrito no se vacía si la API no confirma la boleta.
 6. La respuesta muestra el número, total y estado de la boleta. No se realiza un cobro real.
@@ -237,7 +243,10 @@ npm run dev
 |---|---|---|
 | POST | `/auth/registrar` | Registro de credenciales CLIENTE |
 | POST | `/auth/login` | Público; devuelve JWT |
+| POST | `/auth/refresh` | Cookie de refresh válida; rota la sesión |
+| POST | `/auth/logout` | Revoca la sesión y elimina la cookie |
 | POST | `/auth/validar` | Público para validación del token |
+| POST | `/auth/registrar-cliente` | ADMIN; crea credenciales sin iniciar sesión como CLIENTE |
 | POST | `/auth/registrar-privilegiado` | ADMIN |
 | GET | `/api/v1/productos` y `/api/v1/categorias` | Público |
 | POST/PUT/DELETE | Rutas de productos y categorías | ADMIN |
@@ -272,29 +281,26 @@ El Gateway obtiene el usuario real desde el JWT; el backend vuelve a consultar e
 
 ### Validación ejecutada
 
-| Área | Resultado registrado |
+| Área | Resultado de la validación actual |
 |---|---|
-| Eureka | 1 prueba aprobada |
-| Gateway | 18 pruebas aprobadas |
-| Seguridad | 30 pruebas aprobadas |
-| Usuarios | 32 pruebas aprobadas |
-| Productos | 60 pruebas aprobadas |
-| Pedidos | 14 pruebas aprobadas |
-| **Backend total** | **155 pruebas aprobadas, 0 fallos/errores** |
-| Frontend | 16 pruebas aprobadas; build exitoso |
-| ESLint dirigido a archivos modificados | Aprobado |
+| MS-seguridad | 38 pruebas dirigidas aprobadas (AuthService y AuthController) |
+| Gateway | 18 pruebas dirigidas aprobadas (JwtAuthFilter) |
+| **Backend dirigido** | **56 pruebas aprobadas, 0 fallos/errores** |
+| Frontend | 45 pruebas aprobadas en 13 archivos; build exitoso |
+| ESLint de los archivos frontend modificados | Aprobado |
+| Cobertura global frontend | 23,72 % de líneas (246/1037); el 70 % recomendado en retroalimentación anterior aún no se alcanza |
 
-La ejecución completa de ESLint del frontend mantiene un aviso/error previo de Fast Refresh en `CartContext.jsx`; no se atribuye a los cambios de esta integración. La prueba manual integrada cubrió registro, login, catálogo, checkout, precio/stock, permisos y limpieza de datos temporales.
+Las suites completas anteriores del backend registraron 155 pruebas aprobadas antes de los últimos cambios EP3; no se repitieron completas en esta reanudación. La prueba manual integrada previa cubrió registro, login, catálogo, checkout, precio/stock, permisos y limpieza de datos temporales, pero no la renovación ni las vistas nuevas.
 
 ## 7. Decisiones, pendientes y preguntas para la defensa
 
 ### Limitaciones conocidas
 
 - No hay pago real ni descuento/reserva de inventario. Puede existir una condición de carrera entre dos compras que lean el mismo stock.
-- La gestión de productos/categorías y el historial administrativo del frontend todavía son locales.
+- La renovación, el bootstrap ADMIN y las vistas por rol pasaron sus pruebas automatizadas dirigidas; la prueba en vivo de estos cambios sigue pendiente.
 - Si falla Seguridad después de crear el perfil, queda un perfil sin credenciales; la interfaz informa el error, pero todavía no hay compensación automática.
 - El esquema local de Seguridad aparece en `flyway_schema_history` como un **baseline versión 1**, no como una migración V1 ejecutada. Se verificó que la tabla `credenciales` existe y su estructura es utilizable; para una instalación limpia, comprobar explícitamente que Flyway ejecuta la migración V1.
-- No había credenciales ADMIN activas en la base local inspeccionada. No declarar listo el acceso administrativo hasta completar el bootstrap de forma autorizada.
+- No se ha comprobado una cuenta ADMIN utilizable para la demostración. El bootstrap seguro está implementado, pero debe ejecutarse solo si falta una cuenta autorizada y verificarse después sin registrar la contraseña ni los tokens.
 
 ### Preguntas que conviene saber responder
 
@@ -313,6 +319,9 @@ No. Hoy se comprueba que la cantidad solicitada no supere la disponible en ese m
 **¿Qué significan 401 y 403?**
 401 indica que falta un token válido; 403 que la identidad autenticada no tiene permiso para esa operación.
 
+**¿Por qué el JWT está en memoria y hay una cookie HttpOnly?**
+El JavaScript de la aplicación no puede leer la cookie de renovación. Al recargar, el navegador la envía al endpoint de refresh; el backend rota el token y devuelve un nuevo JWT de acceso, que vuelve a quedar solo en memoria.
+
 **¿Se cobró dinero en la prueba?**
 No. Solo se registró una boleta de prueba; no existe pasarela de pago en este flujo.
 
@@ -327,3 +336,5 @@ No. Solo se registró una boleta de prueba; no existe pasarela de pago en este f
 - [Filtro JWT del Gateway](../MS-gateway/src/main/java/com/example/MS_gateway/filter/JwtAuthFilter.java)
 - [Servicio de compras/boletas](../MS-pedidos/src/main/java/com/example/MS_pedidos/service/PedidoService.java)
 - [Migración de nombres Boleta](../MS-pedidos/src/main/resources/db/migration/V3__renombrar_pedido_a_boleta.sql)
+- [Bootstrap inicial de ADMIN](../MS_gateway_security/src/main/java/com/example/MS_gateway_security/config/AdminBootstrapRunner.java)
+- [Reporte de pruebas frontend](../../Gmoon-tienda-gamer/frontend/TESTING.md)

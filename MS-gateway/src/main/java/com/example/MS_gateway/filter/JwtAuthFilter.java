@@ -97,7 +97,9 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
         if (method == HttpMethod.POST && (
                 normalizedPath.equals("/auth/login")
                         || normalizedPath.equals("/auth/registrar")
-                        || normalizedPath.equals("/auth/validar"))) {
+                        || normalizedPath.equals("/auth/validar")
+                        || normalizedPath.equals("/auth/refresh")
+                        || normalizedPath.equals("/auth/logout"))) {
             return true;
         }
         if (method == HttpMethod.GET && normalizedPath.equals("/auth/health")) {
@@ -124,6 +126,9 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
         }
 
         if (isPath(path, "/auth/registrar-privilegiado")) {
+            return method == HttpMethod.POST && "ADMIN".equals(role);
+        }
+        if (isPath(path, "/auth/registrar-cliente")) {
             return method == HttpMethod.POST && "ADMIN".equals(role);
         }
 

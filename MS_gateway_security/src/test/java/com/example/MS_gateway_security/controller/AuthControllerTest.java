@@ -1,6 +1,7 @@
 package com.example.MS_gateway_security.controller;
 
 import com.example.MS_gateway_security.dto.AuthResponse;
+import com.example.MS_gateway_security.dto.AuthenticationResult;
 import com.example.MS_gateway_security.dto.ValidarTokenResponse;
 import com.example.MS_gateway_security.service.AuthService;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.hamcrest.Matchers.containsString;
 
 @WebMvcTest(AuthController.class)
 @AutoConfigureMockMvc(addFilters = false)   // desactiva Spring Security para los tests
@@ -38,12 +40,16 @@ class AuthControllerTest {
                 .build();
     }
 
+    private AuthenticationResult resultadoAutenticacion() {
+        return new AuthenticationResult(authResponseEjemplo(), "refresh-token-opaque");
+    }
+
     // -------------------------------------------------------------------------
     // POST /auth/registrar → 201
     // -------------------------------------------------------------------------
     @Test
     void deberiaRegistrarCredencialesYRetornar201() throws Exception {
-        when(authService.registrar(any())).thenReturn(authResponseEjemplo());
+        when(authService.registrar(any())).thenReturn(resultadoAutenticacion());
 
         String json = """
                 {
@@ -59,6 +65,8 @@ class AuthControllerTest {
                         .content(json))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.token").exists())
+                .andExpect(header().string("Set-Cookie", containsString("HttpOnly")))
+                .andExpect(header().string("Set-Cookie", containsString("SameSite=Strict")))
                 .andExpect(jsonPath("$.email").value("juan@mail.com"))
                 .andExpect(jsonPath("$.rol").value("CLIENTE"))
                 .andExpect(jsonPath("$.usuarioId").value(1))
@@ -195,7 +203,9 @@ class AuthControllerTest {
                 .valido(true)
                 .rol("ADMIN")
                 .build());
-        when(authService.registrarPrivilegiado(any())).thenReturn(authResponseEjemplo());
+        when(authService.registrarPrivilegiado(any())).thenReturn(
+                new com.example.MS_gateway_security.dto.PrivilegedRegistrationResponse(
+                        2L, "vendedor@mail.com", "VENDEDOR", "Cuenta privilegiada creada"));
 
         mockMvc.perform(post("/auth/registrar-privilegiado")
                         .header("Authorization", "Bearer admin-token")
@@ -213,6 +223,33 @@ class AuthControllerTest {
         verify(authService).registrarPrivilegiado(any());
     }
 
+    @Test
+    void deberiaCrearCuentaClienteAdminSinReemplazarCookieDeSesion() throws Exception {
+        when(authService.validarToken("admin-token")).thenReturn(ValidarTokenResponse.builder()
+                .valido(true)
+                .rol("ADMIN")
+                .build());
+        when(authService.registrarClienteAdministrativo(any())).thenReturn(
+                new com.example.MS_gateway_security.dto.PrivilegedRegistrationResponse(
+                        2L, "cliente@mail.com", "CLIENTE", "Cuenta de cliente creada"));
+
+        mockMvc.perform(post("/auth/registrar-cliente")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                    "usuarioId": 2,
+                                    "email": "cliente@mail.com",
+                                    "password": "segura123"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.rol").value("CLIENTE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+
+        verify(authService).registrarClienteAdministrativo(any());
+    }
+
     // -------------------------------------------------------------------------
     // POST /auth/login → 200 con JWT
     // -------------------------------------------------------------------------
@@ -226,7 +263,8 @@ class AuthControllerTest {
                 .mensaje("Login exitoso")
                 .build();
 
-        when(authService.login(any())).thenReturn(loginResponse);
+        when(authService.login(any())).thenReturn(
+                new AuthenticationResult(loginResponse, "refresh-token-opaque"));
 
         String json = """
                 {
@@ -240,11 +278,35 @@ class AuthControllerTest {
                         .content(json))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").exists())
+                .andExpect(header().string("Set-Cookie", containsString("HttpOnly")))
                 .andExpect(jsonPath("$.email").value("juan@mail.com"))
                 .andExpect(jsonPath("$.rol").value("CLIENTE"))
                 .andExpect(jsonPath("$.mensaje").value("Login exitoso"));
 
         verify(authService).login(any());
+    }
+
+    @Test
+    void deberiaRotarCookieAlRenovarSesion() throws Exception {
+        when(authService.renovarSesion("refresh-anterior")).thenReturn(resultadoAutenticacion());
+
+        mockMvc.perform(post("/auth/refresh").cookie(new jakarta.servlet.http.Cookie(
+                        "gmoon_refresh", "refresh-anterior")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").exists())
+                .andExpect(header().string("Set-Cookie", containsString("HttpOnly")));
+
+        verify(authService).renovarSesion("refresh-anterior");
+    }
+
+    @Test
+    void deberiaRevocarCookieAlCerrarSesion() throws Exception {
+        mockMvc.perform(post("/auth/logout").cookie(new jakarta.servlet.http.Cookie(
+                        "gmoon_refresh", "refresh-anterior")))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
+
+        verify(authService).cerrarSesion("refresh-anterior");
     }
 
     // -------------------------------------------------------------------------

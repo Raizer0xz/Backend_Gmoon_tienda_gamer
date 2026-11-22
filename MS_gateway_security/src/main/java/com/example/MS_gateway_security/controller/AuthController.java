@@ -14,9 +14,13 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -36,15 +40,27 @@ public class AuthController {
 
     private final AuthService authService;
 
+    @Value("${refresh-token.cookie-name:gmoon_refresh}")
+    private String refreshCookieName;
+
+    @Value("${refresh-token.expiration:604800000}")
+    private long refreshTokenExpirationMs;
+
+    @Value("${refresh-token.cookie-secure:false}")
+    private boolean refreshCookieSecure;
+
+    @Value("${refresh-token.cookie-same-site:Strict}")
+    private String refreshCookieSameSite;
+
     // -------------------------------------------------------------------------
     // POST /auth/registrar
     // -------------------------------------------------------------------------
     @Operation(
             summary = "Registrar credenciales",
-            description = "Crea credenciales CLIENTE solo si el ID, correo y rol coinciden con un perfil existente en MS-USUARIOS."
+            description = "Crea credenciales CLIENTE y una sesión solo si el ID, correo y rol coinciden con un perfil existente en MS-USUARIOS."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Credenciales creadas y JWT generado",
+            @ApiResponse(responseCode = "201", description = "Credenciales creadas y JWT de acceso emitido",
                     content = @Content(schema = @Schema(implementation = AuthResponse.class))),
             @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos (validación fallida)",
                     content = @Content(schema = @Schema(example = "{\"error\": \"El email es obligatorio\"}"))),
@@ -56,9 +72,9 @@ public class AuthController {
     public ResponseEntity<?> registrar(@Valid @RequestBody RegisterRequest request) {
         log.info("Solicitud de registro para email: {}", request.getEmail());
         try {
-            AuthResponse response = authService.registrar(request);
+            AuthenticationResult response = authService.registrar(request);
             log.info("Credenciales creadas para usuarioId: {}", request.getUsuarioId());
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+            return respuestaAutenticada(response, HttpStatus.CREATED);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (FeignException | IllegalStateException e) {
@@ -77,8 +93,8 @@ public class AuthController {
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Credenciales creadas y JWT generado",
-                    content = @Content(schema = @Schema(implementation = AuthResponse.class))),
+            @ApiResponse(responseCode = "201", description = "Credenciales privilegiadas creadas",
+                    content = @Content(schema = @Schema(implementation = PrivilegedRegistrationResponse.class))),
             @ApiResponse(responseCode = "400", description = "Datos de entrada inválidos"),
             @ApiResponse(responseCode = "401", description = "Token ausente o inválido"),
             @ApiResponse(responseCode = "403", description = "Solo ADMIN puede crear roles privilegiados"),
@@ -106,7 +122,7 @@ public class AuthController {
         }
 
         try {
-            AuthResponse response = authService.registrarPrivilegiado(request);
+            PrivilegedRegistrationResponse response = authService.registrarPrivilegiado(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -120,12 +136,58 @@ public class AuthController {
         }
     }
 
+    @Operation(
+            summary = "Crear cuenta de cliente desde administración",
+            description = "Crea credenciales CLIENTE sin iniciar sesión como esa cuenta. Requiere token ADMIN.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Cuenta de cliente creada",
+                    content = @Content(schema = @Schema(implementation = PrivilegedRegistrationResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Token ausente o inválido"),
+            @ApiResponse(responseCode = "403", description = "Solo ADMIN puede crear cuentas desde administración")
+    })
+    @PostMapping("/registrar-cliente")
+    public ResponseEntity<?> registrarClienteAdministrativo(
+            @RequestHeader(name = "Authorization", required = false) String authHeader,
+            @Valid @RequestBody RegisterRequest request) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Se requiere un token Bearer válido"));
+        }
+
+        ValidarTokenResponse token = authService.validarToken(authHeader.substring(7));
+        if (!token.isValido()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Token inválido o expirado"));
+        }
+        if (!"ADMIN".equals(token.getRol())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Solo ADMIN puede crear cuentas desde administración"));
+        }
+
+        try {
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(authService.registrarClienteAdministrativo(request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (FeignException | IllegalStateException e) {
+            log.error("No se pudo validar el perfil para usuarioId: {}", request.getUsuarioId(), e);
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "No se pudo validar el perfil en MS-usuarios"));
+        } catch (RuntimeException e) {
+            log.warn("Conflicto al crear cuenta de cliente: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        }
+    }
+
     // -------------------------------------------------------------------------
     // POST /auth/login
     // -------------------------------------------------------------------------
     @Operation(
             summary = "Iniciar sesion",
-            description = "Autentica con email y password. Retorna un JWT Bearer token con duracion de 24h."
+            description = "Autentica con email y password. Retorna un JWT Bearer de acceso de 15 minutos " +
+                    "y una cookie HttpOnly para renovar la sesión durante 7 días."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Login exitoso, JWT retornado",
@@ -139,13 +201,46 @@ public class AuthController {
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
         log.info("Solicitud de login para email: {}", request.getEmail());
         try {
-            AuthResponse response = authService.login(request);
+            AuthenticationResult response = authService.login(request);
             log.info("Login exitoso para email: {}", request.getEmail());
-            return ResponseEntity.ok(response);
+            return respuestaAutenticada(response, HttpStatus.OK);
         } catch (RuntimeException e) {
             log.warn("Login fallido para email: {} — {}", request.getEmail(), e.getMessage());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
         }
+    }
+
+    @Operation(
+            summary = "Renovar sesión",
+            description = "Rota el refresh token guardado en una cookie HttpOnly y devuelve un nuevo JWT de acceso."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Sesión renovada",
+                    content = @Content(schema = @Schema(implementation = AuthResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Refresh token ausente, revocado o expirado")
+    })
+    @PostMapping("/refresh")
+    public ResponseEntity<?> renovarSesion(
+            @CookieValue(name = "${refresh-token.cookie-name:gmoon_refresh}", required = false) String refreshToken) {
+        try {
+            return respuestaAutenticada(authService.renovarSesion(refreshToken), HttpStatus.OK);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .header(HttpHeaders.SET_COOKIE, limpiarCookieRefresh().toString())
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Cerrar sesión",
+            description = "Revoca el refresh token asociado a la cookie HttpOnly y la elimina del navegador.")
+    @ApiResponse(responseCode = "204", description = "Sesión cerrada")
+    @PostMapping("/logout")
+    public ResponseEntity<Void> cerrarSesion(
+            @CookieValue(name = "${refresh-token.cookie-name:gmoon_refresh}", required = false) String refreshToken) {
+        authService.cerrarSesion(refreshToken);
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, limpiarCookieRefresh().toString())
+                .build();
     }
 
     // -------------------------------------------------------------------------
@@ -205,5 +300,29 @@ public class AuthController {
                 "estado",   "activo",
                 "puerto",   "8082"
         ));
+    }
+
+    private ResponseEntity<AuthResponse> respuestaAutenticada(
+            AuthenticationResult result, HttpStatus status) {
+        ResponseCookie cookie = ResponseCookie.from(refreshCookieName, result.refreshToken())
+                .httpOnly(true)
+                .secure(refreshCookieSecure)
+                .sameSite(refreshCookieSameSite)
+                .path("/auth")
+                .maxAge(Duration.ofMillis(refreshTokenExpirationMs))
+                .build();
+        return ResponseEntity.status(status)
+                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .body(result.response());
+    }
+
+    private ResponseCookie limpiarCookieRefresh() {
+        return ResponseCookie.from(refreshCookieName, "")
+                .httpOnly(true)
+                .secure(refreshCookieSecure)
+                .sameSite(refreshCookieSameSite)
+                .path("/auth")
+                .maxAge(Duration.ZERO)
+                .build();
     }
 }

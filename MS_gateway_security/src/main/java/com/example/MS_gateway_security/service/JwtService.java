@@ -20,7 +20,7 @@ import java.util.Date;
  *   usuarioId → ID en ms-usuarios
  *   rol       → CLIENTE | VENDEDOR | ADMIN
  *   iat       → fecha de emision
- *   exp       → expira en 24h por defecto
+ *   exp       → expira en 15 minutos por defecto
  */
 @Service
 public class JwtService {

@@ -1,14 +1,18 @@
 package com.example.MS_gateway_security.service;
 
 import com.example.MS_gateway_security.client.UsuarioClient;
+import com.example.MS_gateway_security.dto.AuthenticationResult;
 import com.example.MS_gateway_security.dto.AuthResponse;
 import com.example.MS_gateway_security.dto.LoginRequest;
 import com.example.MS_gateway_security.dto.PrivilegedRegisterRequest;
+import com.example.MS_gateway_security.dto.PrivilegedRegistrationResponse;
 import com.example.MS_gateway_security.dto.RegisterRequest;
 import com.example.MS_gateway_security.dto.UsuarioPerfilResponse;
 import com.example.MS_gateway_security.dto.ValidarTokenResponse;
 import com.example.MS_gateway_security.model.Credencial;
+import com.example.MS_gateway_security.model.RefreshToken;
 import com.example.MS_gateway_security.repository.CredencialRepository;
+import com.example.MS_gateway_security.repository.RefreshTokenRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +22,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
+import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,6 +39,9 @@ class AuthServiceTest {
 
     @Mock
     private CredencialRepository credencialRepository;
+
+    @Mock
+    private RefreshTokenRepository refreshTokenRepository;
 
     @Mock
     private JwtService jwtService;
@@ -83,7 +95,8 @@ class AuthServiceTest {
         when(jwtService.generarToken("juan@mail.com", 10L, "CLIENTE"))
                 .thenReturn("eyJ.test.token");
 
-        AuthResponse response = authService.registrar(registerRequest);
+        AuthenticationResult session = authService.registrar(registerRequest);
+        AuthResponse response = session.response();
 
         assertThat(response).isNotNull();
         assertThat(response.getToken()).isEqualTo("eyJ.test.token");
@@ -96,6 +109,10 @@ class AuthServiceTest {
         verify(credencialRepository).existsByUsuarioId(10L);
         verify(usuarioClient).buscarPorId(10L);
         verify(credencialRepository).save(any(Credencial.class));
+        verify(refreshTokenRepository).save(argThat(token ->
+                token.getUsuarioId().equals(10L)
+                        && token.getTokenHash().length() == 64
+                        && token.getExpiresAt().isAfter(Instant.now())));
         verify(jwtService).generarToken("juan@mail.com", 10L, "CLIENTE");
     }
 
@@ -168,14 +185,30 @@ class AuthServiceTest {
         when(passwordEncoder.encode("segura123")).thenReturn("$2a$10$hasheado");
         when(credencialRepository.save(any(Credencial.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(jwtService.generarToken("vendedor@mail.com", 10L, "VENDEDOR"))
-                .thenReturn("eyJ.vendedor.token");
+        PrivilegedRegistrationResponse response = authService.registrarPrivilegiado(request);
 
-        AuthResponse response = authService.registrarPrivilegiado(request);
-
-        assertThat(response.getRol()).isEqualTo("VENDEDOR");
+        assertThat(response.rol()).isEqualTo("VENDEDOR");
         verify(usuarioClient).buscarPorId(10L);
         verify(credencialRepository).save(argThat(saved -> "VENDEDOR".equals(saved.getRol())));
+        verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void registrarClienteAdministrativo_deberiaCrearCredencialSinCrearSesion() {
+        when(credencialRepository.existsByEmail("juan@mail.com")).thenReturn(false);
+        when(credencialRepository.existsByUsuarioId(10L)).thenReturn(false);
+        when(usuarioClient.buscarPorId(10L))
+                .thenReturn(new UsuarioPerfilResponse(10L, "juan@mail.com", "CLIENTE"));
+        when(passwordEncoder.encode("segura123")).thenReturn("$2a$hash");
+        when(credencialRepository.save(any(Credencial.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(authService.registrarClienteAdministrativo(registerRequest).rol())
+                .isEqualTo("CLIENTE");
+
+        verify(credencialRepository).save(argThat(saved -> "CLIENTE".equals(saved.getRol())));
+        verify(jwtService, never()).generarToken(any(), any(), any());
+        verify(refreshTokenRepository, never()).save(any());
     }
 
     @Test
@@ -189,6 +222,35 @@ class AuthServiceTest {
         verify(credencialRepository, never()).save(any());
     }
 
+    @Test
+    void bootstrapAdmin_deberiaCrearAdminSoloCuandoNoHayOtroActivo() {
+        when(credencialRepository.existsByRolAndActivoTrue("ADMIN")).thenReturn(false);
+        when(credencialRepository.existsByEmail("admin@mail.com")).thenReturn(false);
+        when(credencialRepository.existsByUsuarioId(10L)).thenReturn(false);
+        when(usuarioClient.buscarPorId(10L))
+                .thenReturn(new UsuarioPerfilResponse(10L, "admin@mail.com", "ADMIN"));
+        when(passwordEncoder.encode("una-clave-segura")).thenReturn("$2a$hash");
+
+        authService.bootstrapAdmin(10L, "admin@mail.com", "una-clave-segura");
+
+        verify(credencialRepository).save(argThat(saved ->
+                "ADMIN".equals(saved.getRol())
+                        && "$2a$hash".equals(saved.getPasswordHash())));
+        verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void bootstrapAdmin_deberiaRechazarCuandoYaExisteAdminActivo() {
+        when(credencialRepository.existsByRolAndActivoTrue("ADMIN")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.bootstrapAdmin(10L, "admin@mail.com", "una-clave-segura"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Ya existe una cuenta ADMIN activa; se cancela el bootstrap.");
+
+        verify(usuarioClient, never()).buscarPorId(any());
+        verify(credencialRepository, never()).save(any());
+    }
+
     // -------------------------------------------------------------------------
     // login()
     // -------------------------------------------------------------------------
@@ -199,7 +261,8 @@ class AuthServiceTest {
         when(jwtService.generarToken("juan@mail.com", 10L, "CLIENTE"))
                 .thenReturn("eyJ.test.token");
 
-        AuthResponse response = authService.login(loginRequest);
+        AuthenticationResult session = authService.login(loginRequest);
+        AuthResponse response = session.response();
 
         assertThat(response).isNotNull();
         assertThat(response.getToken()).isEqualTo("eyJ.test.token");
@@ -209,6 +272,7 @@ class AuthServiceTest {
         verify(credencialRepository).findByEmail("juan@mail.com");
         verify(passwordEncoder).matches("segura123", "$2a$10$hasheado");
         verify(jwtService).generarToken("juan@mail.com", 10L, "CLIENTE");
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 
     @Test
@@ -251,6 +315,71 @@ class AuthServiceTest {
 
         verify(credencialRepository).findByEmail("juan@mail.com");
         verify(jwtService, never()).generarToken(any(), any(), any());
+    }
+
+    @Test
+    void renovarSesion_deberiaRevocarTokenAnteriorYCrearOtro() throws Exception {
+        String oldToken = "refresh-token-anterior";
+        RefreshToken session = RefreshToken.builder()
+                .id(4L)
+                .usuarioId(10L)
+                .tokenHash(hash(oldToken))
+                .expiresAt(Instant.now().plusSeconds(600))
+                .build();
+        when(refreshTokenRepository.findByTokenHashForUpdate(hash(oldToken)))
+                .thenReturn(Optional.of(session));
+        when(credencialRepository.findByUsuarioId(10L)).thenReturn(Optional.of(credencial));
+        when(jwtService.generarToken("juan@mail.com", 10L, "CLIENTE"))
+                .thenReturn("eyJ.nuevo.token");
+
+        AuthenticationResult result = authService.renovarSesion(oldToken);
+
+        assertThat(session.isRevoked()).isTrue();
+        assertThat(result.response().getToken()).isEqualTo("eyJ.nuevo.token");
+        assertThat(result.refreshToken()).isNotEqualTo(oldToken);
+        verify(refreshTokenRepository, times(2)).save(any(RefreshToken.class));
+    }
+
+    @Test
+    void renovarSesion_deberiaRechazarTokenYaRevocado() throws Exception {
+        String oldToken = "refresh-token-revocado";
+        RefreshToken session = RefreshToken.builder()
+                .usuarioId(10L)
+                .tokenHash(hash(oldToken))
+                .expiresAt(Instant.now().plusSeconds(600))
+                .revoked(true)
+                .build();
+        when(refreshTokenRepository.findByTokenHashForUpdate(hash(oldToken)))
+                .thenReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> authService.renovarSesion(oldToken))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Sesión inválida o expirada");
+
+        verify(credencialRepository, never()).findByUsuarioId(any());
+        verify(refreshTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void cerrarSesion_deberiaRevocarRefreshToken() throws Exception {
+        String token = "refresh-token-logout";
+        RefreshToken session = RefreshToken.builder()
+                .usuarioId(10L)
+                .tokenHash(hash(token))
+                .expiresAt(Instant.now().plusSeconds(600))
+                .build();
+        when(refreshTokenRepository.findByTokenHashForUpdate(hash(token)))
+                .thenReturn(Optional.of(session));
+
+        authService.cerrarSesion(token);
+
+        assertThat(session.isRevoked()).isTrue();
+        verify(refreshTokenRepository).save(session);
+    }
+
+    private String hash(String token) throws NoSuchAlgorithmException {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(token.getBytes(StandardCharsets.UTF_8)));
     }
 
     // -------------------------------------------------------------------------
