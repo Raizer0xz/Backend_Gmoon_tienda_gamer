@@ -178,6 +178,36 @@ class ServiceUsuarioTest {
     }
 
     @Test
+    void bootstrapAdmin_deberiaCrearPerfilAdminConCorreoNuevo() {
+        when(repository.existsByEmail("admin@mail.com")).thenReturn(false);
+        when(repository.save(any(Usuario.class))).thenAnswer(invocation -> {
+            Usuario guardado = invocation.getArgument(0);
+            guardado.setId(10L);
+            return guardado;
+        });
+
+        Usuario admin = serviceUsuario.bootstrapAdmin("Admin Gmoon", " ADMIN@MAIL.COM ");
+
+        assertThat(admin.getId()).isEqualTo(10L);
+        assertThat(admin.getRol()).isEqualTo("ADMIN");
+        assertThat(admin.getEmail()).isEqualTo("admin@mail.com");
+        verify(repository).save(argThat(guardado -> "ADMIN".equals(guardado.getRol())));
+    }
+
+    @Test
+    void bootstrapAdmin_deberiaPermitirUnPerfilNuevoAunqueYaExistaOtroAdmin() {
+        when(repository.existsByEmail("nuevo@mail.com")).thenReturn(false);
+        when(repository.save(any(Usuario.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Usuario admin = serviceUsuario.bootstrapAdmin("Nuevo Admin", "nuevo@mail.com");
+
+        assertThat(admin.getRol()).isEqualTo("ADMIN");
+        assertThat(admin.getEmail()).isEqualTo("nuevo@mail.com");
+        verify(repository).save(argThat(guardado -> "ADMIN".equals(guardado.getRol())
+                && "nuevo@mail.com".equals(guardado.getEmail())));
+    }
+
+    @Test
     void actualizarUsuario_deberiaNormalizarEmailYGuardarCambios() {
         Usuario datosNuevos = Usuario.builder()
                 .nombre("Juan Actualizado")

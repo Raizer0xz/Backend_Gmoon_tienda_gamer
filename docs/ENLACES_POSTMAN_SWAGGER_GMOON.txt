@@ -1,6 +1,33 @@
 GMOON - ENLACES SWAGGER, POSTMAN Y AUTENTICACION
 ================================================
 
+
+EJECUTAR ANTES
+Set-Location 'C:\Users\Raizer\Desktop\Backend_Gmoon_tienda_gamer\MS_gateway_security'
+
+$env:ADMIN_BOOTSTRAP_ENABLED = "true"
+$env:ADMIN_BOOTSTRAP_USER_ID = "10"
+$env:ADMIN_BOOTSTRAP_EMAIL = "AdminGmoon@gmoon.cl"
+$env:SERVER_PORT = "0"
+$env:EUREKA_CLIENT_REGISTER_WITH_EUREKA = "false"
+$env:EUREKA_CLIENT_FETCH_REGISTRY = "true"
+
+$secure = Read-Host "JWT_SECRET actual de Gateway y Seguridad" -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+try { $env:JWT_SECRET = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+
+$secure = Read-Host "Escribe la nueva contraseña del admin" -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+try { $env:ADMIN_BOOTSTRAP_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+
+.\mvnw.cmd spring-boot:run
+
+
+JWT_SECRET=<30Caracter>
+
+
 REQUISITOS
 ----------
 Levantar primero MySQL y luego Eureka, Seguridad, Usuarios, Productos,

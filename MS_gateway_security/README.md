@@ -23,12 +23,52 @@ El endpoint `POST /auth/registrar-privilegiado` permite `VENDEDOR` o `ADMIN` y r
 
 Define `JWT_SECRET` en el entorno de ejecución; debe contener al menos 32 bytes para HS256 y ser idéntico al secreto del gateway. No guardes el valor real en el repositorio. La aplicación local usa `classpath:db.migration`, que coincide con la carpeta de migraciones existente.
 
-El servicio no crea una cuenta ADMIN por defecto. Para un entorno nuevo se puede habilitar un único bootstrap de ejecución, siempre que el perfil ADMIN ya exista en `MS-usuarios`. El proceso valida ID, correo y rol, y se detiene si ya hay un ADMIN activo:
+El servicio no crea una cuenta ADMIN por defecto. Antes del bootstrap, comprueba que el correo nuevo no exista en `db_usuarios` y que no haya credenciales ADMIN activas en `db_seguridad`:
+
+```sql
+SELECT id, nombre, email, rol FROM db_usuarios.usuarios
+WHERE LOWER(email) = 'admingmoon@gmoon.cl';
+
+SELECT usuario_id, email, rol FROM db_seguridad.credenciales
+WHERE UPPER(rol) = 'ADMIN' AND activo = TRUE;
+```
+
+El bootstrap crea un perfil nuevo con rol `ADMIN`; no cambia perfiles existentes. Seguridad rechazará la creación de credenciales si ya hay un ADMIN activo.
+
+Desde `MS-usuarios`, configura el nombre y correo y arráncalo temporalmente:
 
 ```powershell
 $env:ADMIN_BOOTSTRAP_ENABLED = "true"
-$env:ADMIN_BOOTSTRAP_USER_ID = "12"
-$env:ADMIN_BOOTSTRAP_EMAIL = "admin@example.com"
+$env:ADMIN_BOOTSTRAP_NAME = "ADMINISTRADOR"
+$env:ADMIN_BOOTSTRAP_EMAIL = "AdminGmoon@gmoon.cl"
+$env:SERVER_PORT = "0"
+$env:EUREKA_CLIENT_REGISTER_WITH_EUREKA = "false"
+$env:EUREKA_CLIENT_FETCH_REGISTRY = "false"
+.\mvnw.cmd spring-boot:run
+```
+
+Anota el ID que aparece en el log. Detén esa instancia con `Ctrl+C`, elimina las variables y vuelve a arrancar `MS-usuarios` normalmente:
+
+```powershell
+Remove-Item Env:ADMIN_BOOTSTRAP_ENABLED, Env:ADMIN_BOOTSTRAP_NAME, Env:ADMIN_BOOTSTRAP_EMAIL, Env:SERVER_PORT, Env:EUREKA_CLIENT_REGISTER_WITH_EUREKA, Env:EUREKA_CLIENT_FETCH_REGISTRY
+```
+
+Después, desde `MS_gateway_security`, ejecuta el bootstrap de credenciales usando ese ID. El proceso valida que el perfil coincida en ID, correo y rol, y se detiene si ya hay un ADMIN activo:
+
+```powershell
+$env:ADMIN_BOOTSTRAP_ENABLED = "true"
+$env:ADMIN_BOOTSTRAP_USER_ID = "ID_MOSTRADO_EN_EL_LOG"
+$env:ADMIN_BOOTSTRAP_EMAIL = "AdminGmoon@gmoon.cl"
+$env:SERVER_PORT = "0"
+$env:EUREKA_CLIENT_REGISTER_WITH_EUREKA = "false"
+$env:EUREKA_CLIENT_FETCH_REGISTRY = "true"
+$secureJwtSecret = Read-Host "JWT_SECRET actual del Gateway y Seguridad" -AsSecureString
+$jwtSecretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureJwtSecret)
+try {
+  $env:JWT_SECRET = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($jwtSecretPointer)
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($jwtSecretPointer)
+}
 $securePassword = Read-Host "Contraseña temporal del administrador" -AsSecureString
 $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
 try {
@@ -39,7 +79,13 @@ try {
 .\mvnw.cmd spring-boot:run
 ```
 
-El proceso debe ejecutarse en una terminal temporal: al iniciar, crea las credenciales y valida el perfil en `MS-usuarios`. Cierra esa instancia y borra las cuatro variables de entorno antes de iniciar el servicio normal. La opción permanece desactivada por defecto. No guardes estas variables ni una contraseña fija en el repositorio. Usa HTTPS y configura `REFRESH_COOKIE_SECURE=true` fuera del entorno local.
+El proceso de Seguridad debe ejecutarse en una terminal temporal con Eureka y `MS-usuarios` disponibles. Al iniciar, crea las credenciales y valida el perfil. Detén esa instancia con `Ctrl+C`, elimina las variables de entorno y vuelve a iniciar Seguridad normalmente:
+
+```powershell
+Remove-Item Env:ADMIN_BOOTSTRAP_ENABLED, Env:ADMIN_BOOTSTRAP_USER_ID, Env:ADMIN_BOOTSTRAP_EMAIL, Env:ADMIN_BOOTSTRAP_PASSWORD, Env:JWT_SECRET, Env:SERVER_PORT, Env:EUREKA_CLIENT_REGISTER_WITH_EUREKA, Env:EUREKA_CLIENT_FETCH_REGISTRY
+```
+
+La opción permanece desactivada por defecto en ambos servicios. No guardes estas variables ni una contraseña fija en el repositorio. Usa HTTPS y configura `REFRESH_COOKIE_SECURE=true` fuera del entorno local.
 
 ## API y pruebas
 

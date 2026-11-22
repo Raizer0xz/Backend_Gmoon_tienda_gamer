@@ -65,6 +65,15 @@ public class ServiceUsuario {
         return repository.save(usuario);
     }
 
+    public Usuario bootstrapAdmin(String nombre, String email) {
+        Usuario admin = Usuario.builder()
+                .nombre(nombre)
+                .email(email)
+                .rol("ADMIN")
+                .build();
+        return crearUsuario(admin, "ADMIN");
+    }
+
     public Optional<Usuario> actualizarUsuario(Long id, Usuario datosNuevos) {
         return repository.findById(id).map(existente -> {
             String email = normalizeEmail(datosNuevos.getEmail());
